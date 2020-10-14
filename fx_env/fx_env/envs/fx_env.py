@@ -9,6 +9,10 @@ TECH_FILE_VALUE_MAX = 130.0
 # df.min().values[1:].min()
 TECH_FILE_VALUE_MIN = -6.0
 
+# FX取引に関する定数
+spread = 0.008
+trade_lots = 100
+
 
 class Position():
     def __init__(self, is_long: bool, lots: int, open_pri: float):
@@ -18,9 +22,9 @@ class Position():
 
     def get_pl(self, close_pri: float):
         if self.is_long:
-            return (close_pri - self.open_price)*self.lots
+            return (close_pri - self.open_price + spread)*self.lots
         else:
-            return (self.open_price - close_pri)*self.lots
+            return (self.open_price - close_pri - spread)*self.lots
 
 
 class Account():
@@ -53,10 +57,6 @@ class FxEnv(gym.Env):
         # 初期値の定義
         self.init_balance = 10000
 
-        # FX取引に関する定数
-        self.spread = 0.8
-        self.leverage = 25
-
         # 取引に関する変数
         self.now_price = None
 
@@ -67,19 +67,41 @@ class FxEnv(gym.Env):
             shape=(self.window_size, self.data.shape[1]))
         return
 
+    @property
+    def now_price(self):
+        return self.data[self.data_iter][3]
+
+    @property
+    def done(self):
+        # データの終端なら修了
+        return self.data_iter >= len(self.data) + 1
+
     def _reset(self):
         self.account = Account(self.init_balance)
         self.data_iter = self.window_size
         return self._observe()
 
-    def _step(self):
-        pass
+    def _step(self, action):
+        reward = 0
+        if action == self.STAY:
+            pass
+        elif action == self.BUY:
+            reward = self.buy(self.trade_lots)
+        elif action == self.SELL:
+            reward = self.sell(self.trade_lots)
+        elif action == self.CLOSE:
+            reward = self.close()
+        self.data_iter += 1
+        return self._observe(), reward, self.done, self._info()
 
     def _observe(self):
-        return self.data[self.data_iter-self.window_size:self.data_iter]
+        return self.data[self.data_iter - self.window_size: self.data_iter]
+
+    def _info(self):
+        return {'balance': self.account.balance}
 
     # すべてのポジションを閉じて損益を返す
-    def close(self, is_long=None):
+    def close(self, is_long=None) -> float:
         pl = 0
         for pos in self.account.positions:
             if (is_long is not None):
@@ -93,6 +115,7 @@ class FxEnv(gym.Env):
                 self.account.positions.remove(pos)
         return pl
 
+    # 買い注文を出し，損益を返す
     def buy(self, lots: int):
         # shortポジションをクローズ
         pl = self.close(is_long=False)
