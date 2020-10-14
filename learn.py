@@ -4,9 +4,10 @@ import torch
 import torch.nn
 import gym
 import numpy
+import fx_env
 
 # 環境の生成
-env = gym.make('CartPole-v0')
+env = fx_env.FxEnv()
 
 
 # Q関数の定義
@@ -35,24 +36,22 @@ agent = pfrl.agents.DoubleDQN(
     update_interval=1,  # 更新インターバル
     target_update_interval=100,  # ターゲット更新インターバル
     phi=lambda x: x.astype(numpy.float32, copy=False),  # 特徴抽出関数
-    gpu=-1,  # GPUのデバイスID（-1:CPU）
+    gpu=0,  # GPUのデバイスID（-1:CPU）
 )
 
 # エージェントの学習
-n_episodes = 500  # エピソード数
-max_episode_len = 200  # 最大エピソード長
+n_episodes = 50  # エピソード数
 
 # エピソードの反復
 for i in range(1, n_episodes + 1):
     # 環境のリセット
     obs = env.reset()
     R = 0  # エピソード報酬
-    t = 0  # ステップ
 
     # ステップの反復
     while True:
         # 環境の描画
-        # env.render()
+        env.render()
 
         # 行動の推論
         action = agent.act(obs)
@@ -60,16 +59,14 @@ for i in range(1, n_episodes + 1):
         # 環境の1ステップ実行
         obs, reward, done, _ = env.step(action)
         R += reward
-        t += 1
-        reset = t == max_episode_len
-        agent.observe(obs, reward, done, reset)
+        agent.observe(obs, reward, done, False)
 
         # エピソード完了
-        if done or reset:
+        if done:
             break
 
     # ログ出力
-    if i % 10 == 0:
+    if i % 1 == 0:
         print('episode:', i, 'R:', R)
     if i % 50 == 0:
         print('statistics:', agent.get_statistics())
@@ -84,7 +81,6 @@ with agent.eval_mode():
         # 環境のリセット
         obs = env.reset()
         R = 0  # エピソード報酬
-        t = 0  # ステップ
 
         # ステップの反復
         while True:
@@ -95,11 +91,9 @@ with agent.eval_mode():
             action = agent.act(obs)
             obs, r, done, _ = env.step(action)
             R += r
-            t += 1
-            reset = t == 200
-            agent.observe(obs, r, done, reset)
+            agent.observe(obs, r, done, False)
 
             # エピソード完了
-            if done or reset:
+            if done:
                 break
         print('evaluation episode:', i, 'R:', R)

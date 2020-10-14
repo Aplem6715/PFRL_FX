@@ -2,6 +2,7 @@ import gym
 import gym.spaces
 import pandas as pd
 import numpy as np
+import datetime as dt
 from typing import List
 
 # df.max().values[1:].max()
@@ -36,6 +37,9 @@ class Account():
     def has_position(self):
         return len(self.positions) != 0
 
+    def take_pl(self, pl):
+        self.balance += pl
+
 
 class FxEnv(gym.Env):
     def __init__(self):
@@ -49,19 +53,19 @@ class FxEnv(gym.Env):
         self.window_size = 5  # 過去何本分のロウソクを見るか
 
         # OHLCデータ
-        self.tech_file_path = './fx_env/fx_env/envs/M30_201001-201912_Tech9.csv'
+        self.tech_file_path = 'M30_201001-201912_Tech9.csv'
         df = pd.read_csv(self.tech_file_path, parse_dates=[0])
-        self.data = df.values[1:]  # np.ndarray
+        df = df[((df['Datetime'] >= dt.datetime(2017, 6, 1))
+                 & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
+        padding = len(df) % self.window_size
+        self.data = df.values[:-padding, 1:]
         self.data_iter = 0
 
         # 初期値の定義
         self.init_balance = 10000
 
-        # 取引に関する変数
-        self.now_price = None
-
         # 環境の設定
-        self.action = gym.spaces.Discrete(4)
+        self.action_space = gym.spaces.Discrete(4)
         self.observation_space = gym.spaces.Box(
             low=TECH_FILE_VALUE_MIN, high=TECH_FILE_VALUE_MAX,
             shape=(self.window_size, self.data.shape[1]))
@@ -73,35 +77,46 @@ class FxEnv(gym.Env):
 
     @property
     def done(self):
-        # データの終端なら修了
-        return self.data_iter >= len(self.data) + 1
+        # データの終端 or 残高が0で終了
+        return (self.data_iter + 1 >= len(self.data)) or self.account.balance <= trade_lots
 
-    def _reset(self):
+    def reset(self):
         self.account = Account(self.init_balance)
-        self.data_iter = self.window_size
+        self.data_iter = self.window_size - 1
+
         return self._observe()
 
-    def _step(self, action):
+    def step(self, action):
         reward = 0
         if action == self.STAY:
             pass
         elif action == self.BUY:
-            reward = self.buy(self.trade_lots)
+            reward = self.buy()
         elif action == self.SELL:
-            reward = self.sell(self.trade_lots)
+            reward = self.sell()
         elif action == self.CLOSE:
             reward = self.close()
+        self.account.take_pl(reward)
         self.data_iter += 1
+
+        if self.account.balance < 0:
+            reward = -100
+
         return self._observe(), reward, self.done, self._info()
 
+    def render(self):
+        print('{:.1f}% ({}/{})  balance:{:.1f}'.format(self.data_iter/len(self.data)
+                                                       * 100, self.data_iter, len(self.data), self.account.balance), end='\r')
+        return
+
     def _observe(self):
-        return self.data[self.data_iter - self.window_size: self.data_iter]
+        return self.data[self.data_iter - self.window_size + 1: self.data_iter + 1].ravel()
 
     def _info(self):
         return {'balance': self.account.balance}
 
     # すべてのポジションを閉じて損益を返す
-    def close(self, is_long=None) -> float:
+    def close(self, is_long=None):
         pl = 0
         for pos in self.account.positions:
             if (is_long is not None):
@@ -116,22 +131,18 @@ class FxEnv(gym.Env):
         return pl
 
     # 買い注文を出し，損益を返す
-    def buy(self, lots: int):
+    def buy(self):
         # shortポジションをクローズ
         pl = self.close(is_long=False)
         # 買いポジションを追加
         self.account.positions.append(
-            Position(is_long=True, lots=lots, open_pri=self.now_price))
+            Position(is_long=True, lots=trade_lots, open_pri=self.now_price))
         return pl
 
-    def sell(self, lots):
+    def sell(self):
         # longポジションをクローズ
         pl = self.close(is_long=True)
         # 売りポジションを追加
         self.account.positions.append(
-            Position(is_long=False, lots=lots, open_pri=self.now_price))
+            Position(is_long=False, lots=trade_lots, open_pri=self.now_price))
         return pl
-
-
-env = FxEnv()
-print(env.observation_space.shape)
