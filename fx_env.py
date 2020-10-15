@@ -41,12 +41,22 @@ class Account():
 
     @property
     def position_category(self):
+        self.position_sum = 0
+        for pos in self.positions:
+            self.position_sum += pos.lots * 1 if pos.is_long else -1
+
         if self.position_sum > 0:
             return 1
         if self.position_sum < 0:
             return -1
         else:
             return 0
+
+    def get_pl(self, close_price):
+        pl = 0
+        for pos in self.positions:
+            pl += pos.get_pl(close_price)
+        return pl
 
     def take_pl(self, pl):
         self.balance += pl
@@ -82,7 +92,7 @@ class FxEnv(gym.Env):
         self.action_space = gym.spaces.Discrete(4)
         self.observation_space = gym.spaces.Box(
             low=0, high=1,
-            shape=(self.window_size*self.data.shape[1]+1, ))
+            shape=(self.window_size*self.data.shape[1]+2, ))
         return
 
     @property
@@ -124,7 +134,8 @@ class FxEnv(gym.Env):
         return
 
     def _observe(self):
-        return np.append(self.data[self.data_iter - self.window_size + 1: self.data_iter + 1].ravel(), self.account.position_category)
+        return np.append(self.data[self.data_iter - self.window_size + 1: self.data_iter + 1].ravel(),
+                         [self.account.position_category, self.account.get_pl(self.now_price)])
 
     def _info(self):
         return {'balance': self.account.balance}

@@ -67,7 +67,7 @@ for i in range(1, n_episodes + 1):
 
     # ログ出力
     if i % 1 == 0:
-        print('episode:', i, 'R:', R)
+        print('episode:', i, 'R:{:.3f}'.format(R), '                  ')
     if i % 50 == 0:
         print('statistics:', agent.get_statistics())
 print('Finished.')
