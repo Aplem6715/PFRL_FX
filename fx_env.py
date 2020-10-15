@@ -3,7 +3,6 @@ import gym.spaces
 import pandas as pd
 import numpy as np
 import datetime as dt
-from sklearn import preprocessing
 from typing import List
 
 # df.max().values[1:].max()
@@ -63,7 +62,7 @@ class Account():
 
 
 class FxEnv(gym.Env):
-    def __init__(self):
+    def __init__(self, tech_df, scaler):
         # 定数の定義
         self.STAY = 0
         self.BUY = 1
@@ -74,14 +73,15 @@ class FxEnv(gym.Env):
         self.window_size = 5  # 過去何本分のロウソクを見るか
 
         # OHLCデータ
+        '''
         self.tech_file_path = 'M30_201001-201912_Tech7.csv'
         df = pd.read_csv(self.tech_file_path, parse_dates=[0])
         df = df[((df['Datetime'] >= dt.datetime(2017, 6, 1))
                  & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
-        data = df.values[:, 1:]
+        '''
+        data = tech_df.values[:, 1:]
         # データの正規化
-        scaler = preprocessing.MinMaxScaler()
-        self.data = scaler.fit_transform(data)
+        self.data = scaler.transform(data)
 
         self.data_iter = 0
 
