@@ -1,4 +1,3 @@
-
 import pfrl
 import torch
 import torch.nn
@@ -14,7 +13,8 @@ df = pd.read_csv('M30_201001-201912_Tech7.csv', parse_dates=[0])
 scaler = preprocessing.MinMaxScaler()
 scaler.fit(df.iloc[:, 1:])
 
-valid_df = df[(df['Datetime'] < dt.datetime(2017, 1, 1))]
+valid_df = df[((df['Datetime'] >= dt.datetime(2015, 1, 1))
+               & (df['Datetime'] < dt.datetime(2017, 1, 1)))]
 
 valid_env = fx_env.FxEnv(valid_df, scaler)
 
@@ -22,11 +22,11 @@ valid_env = fx_env.FxEnv(valid_df, scaler)
 obs_size = valid_env.observation_space.low.size
 n_actions = valid_env.action_space.n
 q_func = torch.nn.Sequential(
-    torch.nn.Linear(obs_size, 50),
+    torch.nn.Linear(obs_size, 128),
     torch.nn.ReLU(),
-    torch.nn.Linear(50, 50),
+    torch.nn.Linear(128, 64),
     torch.nn.ReLU(),
-    torch.nn.Linear(50, n_actions),
+    torch.nn.Linear(64, n_actions),
     pfrl.q_functions.DiscreteActionValueHead(),
 )
 # エージェントの生成
@@ -44,7 +44,7 @@ agent = pfrl.agents.DoubleDQN(
     phi=lambda x: x.astype(numpy.float32, copy=False),  # 特徴抽出関数
     gpu=0,  # GPUのデバイスID（-1:CPU）
 )
-agent.load('agent')
+agent.load('agent_double')
 
 # エージェントのテスト
 with agent.eval_mode():
