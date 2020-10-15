@@ -3,6 +3,7 @@ import gym.spaces
 import pandas as pd
 import numpy as np
 import datetime as dt
+from sklearn import preprocessing
 from typing import List
 
 # df.max().values[1:].max()
@@ -12,7 +13,7 @@ TECH_FILE_VALUE_MIN = -6.0
 
 # FX取引に関する定数
 spread = 0.008
-trade_lots = 100
+trade_lots = 10
 
 
 class Position():
@@ -58,7 +59,11 @@ class FxEnv(gym.Env):
         df = df[((df['Datetime'] >= dt.datetime(2017, 6, 1))
                  & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
         padding = len(df) % self.window_size
-        self.data = df.values[:-padding, 1:]
+        data = df.values[:-padding, 1:]
+        # データの正規化
+        scaler = preprocessing.MinMaxScaler()
+        self.data = scaler.fit_transform(data)
+
         self.data_iter = 0
 
         # 初期値の定義
