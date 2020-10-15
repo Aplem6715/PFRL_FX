@@ -12,7 +12,7 @@ TECH_FILE_VALUE_MAX = 130.0
 TECH_FILE_VALUE_MIN = -6.0
 
 # FX取引に関する定数
-spread = 0.008
+spread = 0.003
 trade_lots = 10
 
 
@@ -33,10 +33,20 @@ class Account():
     def __init__(self, balance: float):
         self.balance = balance  # type: float
         self.positions = []  # type: List[Position]
+        self.position_sum = 0
 
     @property
     def has_position(self):
         return len(self.positions) != 0
+
+    @property
+    def position_category(self):
+        if self.position_sum > 0:
+            return 1
+        if self.position_sum < 0:
+            return -1
+        else:
+            return 0
 
     def take_pl(self, pl):
         self.balance += pl
@@ -54,12 +64,11 @@ class FxEnv(gym.Env):
         self.window_size = 5  # 過去何本分のロウソクを見るか
 
         # OHLCデータ
-        self.tech_file_path = 'M30_201001-201912_Tech9.csv'
+        self.tech_file_path = 'M30_201001-201912_Tech7.csv'
         df = pd.read_csv(self.tech_file_path, parse_dates=[0])
         df = df[((df['Datetime'] >= dt.datetime(2017, 6, 1))
                  & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
-        padding = len(df) % self.window_size
-        data = df.values[:-padding, 1:]
+        data = df.values[:, 1:]
         # データの正規化
         scaler = preprocessing.MinMaxScaler()
         self.data = scaler.fit_transform(data)
@@ -67,13 +76,13 @@ class FxEnv(gym.Env):
         self.data_iter = 0
 
         # 初期値の定義
-        self.init_balance = 10000
+        self.init_balance = 1000
 
         # 環境の設定
         self.action_space = gym.spaces.Discrete(4)
         self.observation_space = gym.spaces.Box(
-            low=TECH_FILE_VALUE_MIN, high=TECH_FILE_VALUE_MAX,
-            shape=(self.window_size, self.data.shape[1]))
+            low=0, high=1,
+            shape=(self.window_size*self.data.shape[1]+1, ))
         return
 
     @property
@@ -115,7 +124,7 @@ class FxEnv(gym.Env):
         return
 
     def _observe(self):
-        return self.data[self.data_iter - self.window_size + 1: self.data_iter + 1].ravel()
+        return np.append(self.data[self.data_iter - self.window_size + 1: self.data_iter + 1].ravel(), self.account.position_category)
 
     def _info(self):
         return {'balance': self.account.balance}

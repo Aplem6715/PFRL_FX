@@ -75,25 +75,22 @@ print('Finished.')
 
 # エージェントのテスト
 with agent.eval_mode():
+    # 環境のリセット
+    obs = env.reset()
+    R = 0  # エピソード報酬
 
-    # エピソードの反復
-    for i in range(10):
-        # 環境のリセット
-        obs = env.reset()
-        R = 0  # エピソード報酬
+    # ステップの反復
+    while True:
+        # 環境の描画
+        env.render()
 
-        # ステップの反復
-        while True:
-            # 環境の描画
-            env.render()
+        # 環境の1ステップ実行
+        action = agent.act(obs)
+        obs, r, done, _ = env.step(action)
+        R += r
+        agent.observe(obs, r, done, False)
 
-            # 環境の1ステップ実行
-            action = agent.act(obs)
-            obs, r, done, _ = env.step(action)
-            R += r
-            agent.observe(obs, r, done, False)
-
-            # エピソード完了
-            if done:
-                break
-        print('evaluation episode:', i, 'R:', R)
+        # エピソード完了
+        if done:
+            break
+    print('R:', R)
