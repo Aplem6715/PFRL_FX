@@ -20,7 +20,7 @@ from sklearn import preprocessing
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--processes", type=int, default=8)
+parser.add_argument("--processes", type=int, default=1)
 parser.add_argument("--seed", type=int, default=0,
                     help="Random seed [0, 2 ** 31)")
 parser.add_argument(
@@ -67,13 +67,13 @@ input_to_hidden = torch.nn.Sequential(
     torch.nn.ReLU(),
     torch.nn.Linear(128, 64),
     torch.nn.ReLU(),
-    torch.nn.Linear(64, n_actions),
-    pfrl.q_functions.DiscreteActionValueHead(),
+    torch.nn.Linear(64, 32),
+    torch.nn.ReLU(),
 )
 
 head = acer.ACERDiscreteActionHead(
-    pi=nn.Sequential(nn.Linear(64, n_actions), SoftmaxCategoricalHead(),),
-    q=nn.Sequential(nn.Linear(64, n_actions), DiscreteActionValueHead(),),
+    pi=nn.Sequential(nn.Linear(32, n_actions), SoftmaxCategoricalHead(),),
+    q=nn.Sequential(nn.Linear(32, n_actions), DiscreteActionValueHead(),),
 )
 
 model = nn.Sequential(input_to_hidden, head)
@@ -105,7 +105,7 @@ agent = acer.ACER(
 )
 
 
-def make_env():
+def make_env(process_idx, test):
     df = pd.read_csv('M30_201001-201912_Tech7.csv', parse_dates=[0])
 
     scaler = preprocessing.MinMaxScaler()
@@ -142,40 +142,6 @@ experiments.train_agent_async(
 
 
 '''
-# エージェントの学習
-n_episodes = 50  # エピソード数
-
-# エピソードの反復
-for i in range(1, n_episodes + 1):
-    # 環境のリセット
-    obs = train_env.reset()
-    R = 0  # エピソード報酬
-
-    # ステップの反復
-    while True:
-        # 環境の描画
-        train_env.render()
-
-        # 行動の推論
-        action = agent.act(obs)
-
-        # 環境の1ステップ実行
-        obs, reward, done, _ = train_env.step(action)
-        R += reward
-        agent.observe(obs, reward, done, False)
-
-        # エピソード完了
-        if done:
-            break
-
-    # ログ出力
-    if i % 1 == 0:
-        print('episode:', i, 'R:{:.3f}'.format(R), '                  ')
-    if i % 50 == 0:
-        print('statistics:', agent.get_statistics())
-print('Finished.')
-
-
 # エージェントのテスト
 with agent.eval_mode():
     # 環境のリセット
@@ -197,6 +163,5 @@ with agent.eval_mode():
         if done:
             break
     print('R:', R)
-
-agent.save('agent_double')
 '''
+agent.save('agent_acer')
