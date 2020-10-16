@@ -10,7 +10,7 @@
 .history/
 
 # python ignore
-__pycache__
+__pycache__/*　
 *.py[cod]
 *$py.class
 
@@ -18,3 +18,7 @@ __pycache__
 fx_env/fx_env/envs/M30_201001-201912_Tech9.csv
 M30_201001-201912_Tech9.csv
 M30_201001-201912_Tech7.csv
+results/*
+results_acer/*
+results_rainbow/*
+atari_acer.py
