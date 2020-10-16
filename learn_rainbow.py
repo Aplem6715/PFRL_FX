@@ -3,6 +3,7 @@ import json
 import os
 
 import torch
+import pickle
 import numpy as np
 import pandas as pd
 import datetime as dt
@@ -27,6 +28,8 @@ def main():
 
     scaler = preprocessing.MinMaxScaler()
     scaler.fit(df.iloc[:, 1:])
+
+    pickle.dump(scaler, open('scaler.pkl', 'wb'))
 
     train_df = df[((df['Datetime'] >= dt.datetime(2016, 1, 1))
                    & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
