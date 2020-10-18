@@ -5,29 +5,35 @@ import numpy as np
 import datetime as dt
 from typing import List
 
+import fx_calc
+
 # df.max().values[1:].max()
 TECH_FILE_VALUE_MAX = 130.0
 # df.min().values[1:].min()
 TECH_FILE_VALUE_MIN = -6.0
 
 # FX取引に関する定数
-spread = 0.003
-trade_lots = 10
-loss_cut_pips = 100
-loss_cut_yen = loss_cut_pips / 100
+# 所持金の1%を賭ける
+TRADE_RATIO = 0.01
+# 2%で損切り　
+LOSS_CUT_RATIO = 0.02
+# 初期損益比率
+INIT_PL_RATIO = 1.0
 
 
 class Position():
-    def __init__(self, is_long: bool, lots: int, open_pri: float):
+    def __init__(self, units: int, open_pri: float):
         self.open_price = open_pri
-        self.lots = lots
-        self.is_long = is_long
+        self.units = units
 
     def get_pl(self, close_pri: float):
-        if self.is_long:
-            return (close_pri - self.open_price + spread)*self.lots
-        else:
-            return (self.open_price - close_pri - spread)*self.lots
+        pips = close_pri - self.open_price
+        pl = fx_calc.calc_pl(self.open_price, close_pri, self.units)
+        return pips, pl
+
+    @property
+    def is_long(self):
+        return self.units > 0
 
 
 class Account():
@@ -41,29 +47,18 @@ class Account():
         return len(self.positions) != 0
 
     @property
-    def position_category(self):
+    def position_units(self):
         self.position_sum = 0
         for pos in self.positions:
-            self.position_sum += pos.lots * 1 if pos.is_long else -1
+            self.position_sum += pos.units
+        return self.position_sum
 
-        if self.position_sum > 0:
-            return 1
-        if self.position_sum < 0:
-            return -1
-        else:
-            return 0
-
-    def get_pl(self, close_price):
-        pl = 0
+    def get_unrealized_pl(self, close_price):
+        unreal_pl = 0
         for pos in self.positions:
-            pl += pos.get_pl(close_price)
-        return pl
-
-    def get_position_sum(self):
-        pos_sum = 0
-        for pos in self.positions:
-            pos_sum += pos.lots
-        return pos_sum
+            _, pl = pos.get_pl(close_price)
+            unreal_pl += pl
+        return unreal_pl
 
     def take_pl(self, pl):
         self.balance += pl
@@ -80,13 +75,6 @@ class FxEnv(gym.Env):
         # 学習に関する設定
         self.window_size = 5  # 過去何本分のロウソクを見るか
 
-        # OHLCデータ
-        '''
-        self.tech_file_path = 'M30_201001-201912_Tech7.csv'
-        df = pd.read_csv(self.tech_file_path, parse_dates=[0])
-        df = df[((df['Datetime'] >= dt.datetime(2017, 6, 1))
-                 & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
-        '''
         self.df = tech_df
         data = tech_df.values[:, 1:]
         # データの正規化
@@ -96,6 +84,8 @@ class FxEnv(gym.Env):
 
         # 初期値の定義
         self.init_balance = 1000
+        self.profit = 0.0000001
+        self.loss = 0.0000001
 
         # 環境の設定
         self.action_space = gym.spaces.Discrete(4)
@@ -106,12 +96,12 @@ class FxEnv(gym.Env):
 
     @property
     def now_price(self):
-        return self.data[self.data_iter][3]
+        return self.df.iloc[self.data_iter]["Close"]
 
     @property
     def done(self):
-        # データの終端 or 残高が0で終了
-        return (self.data_iter + 1 >= len(self.data)) or self.account.balance <= trade_lots
+        # データの終端で終了
+        return (self.data_iter + 1 >= len(self.data))
 
     def reset(self):
         self.account = Account(self.init_balance)
@@ -122,9 +112,13 @@ class FxEnv(gym.Env):
     def step(self, action):
         reward = 0
         done = self.done
-        pl = self.account.get_pl(self.now_price)
+        unrealized_pl = self.account.get_unrealized_pl(self.now_price)
+
         # ロスカット判定
-        is_loss_cut = pl < -loss_cut_yen * trade_lots
+        is_loss_cut = self.account.balance + \
+            unrealized_pl < self.account.balance * LOSS_CUT_RATIO
+
+        # アクションに応じて行動
         if action == self.CLOSE or done or is_loss_cut:
             reward = self.close()
         elif action == self.STAY:
@@ -133,52 +127,58 @@ class FxEnv(gym.Env):
             reward = self.buy()
         elif action == self.SELL:
             reward = self.sell()
-        self.account.take_pl(reward)
+
         self.data_iter += 1
+
 
         return self._observe(), reward, self.done, self._info()
 
     def render(self):
-        print('{:.1f}% ({}/{})  balance:{:.1f}  position:{:.1f}'.format(self.data_iter/len(self.data)
-                                                                        * 100, self.data_iter, len(self.data), self.account.balance, self.account.get_position_sum()), end='\r')
+        print('{:.1f}% ({}/{},{})  balance:{:.1f}  position:{:.1f}  損益率:{:.1f}'.format(self.data_iter/len(self.data)
+                                                                                    * 100, self.data_iter, len(self.data), len(self.df), self.account.balance, self.account.position_units, self.profit/self.loss*100), end='\r')
         return
 
     def _observe(self):
         return np.append(self.data[self.data_iter - self.window_size + 1: self.data_iter + 1].ravel(),
-                         [self.account.position_category, self.account.get_pl(self.now_price)])
+                         [self.account.position_units, self.account.get_unrealized_pl(self.now_price)/self.account.balance])
 
     def _info(self):
         return {'balance': self.account.balance, 'datetime': self.df.iloc[self.data_iter]['Datetime']}
 
-    # すべてのポジションを閉じて損益を返す
-    def close(self, is_long=None):
-        pl = 0
-        if (is_long is not None):
-            for pos in self.account.positions:
-                # long/shortが指定されている場合には指定と合致するもののみクローズ
-                if is_long == pos.is_long:
-                    pl += pos.get_pl(self.now_price)
-                    self.account.positions.remove(pos)
+    def update_pips_stat(self, new_pips):
+        if new_pips > 0:
+            self.profit += new_pips
         else:
-            for pos in self.account.positions:
-                # long/shortの指定がないときはすべてクローズ
-                pl += pos.get_pl(self.now_price)
+            self.loss += -new_pips
+
+    # すべてのポジションを閉じて損益を返す
+    def close(self, close_long=True, close_short=True):
+        pl = 0
+        for pos in self.account.positions:
+            # long/shortが指定通りならクローズ
+            if (close_long and pos.is_long) or (close_short and not pos.is_long):
+                new_pips, new_pl = pos.get_pl(self.now_price)
+                pl += new_pl
+                self.update_pips_stat(new_pips)
                 self.account.positions.remove(pos)
+
+        # 内部変数を更新
+        self.account.take_pl(pl)
         return pl
 
     # 買い注文を出し，損益を返す
     def buy(self):
         # shortポジションをクローズ
-        pl = self.close(is_long=False)
+        pl = self.close(close_long=False, close_short=True)
         # 買いポジションを追加
         self.account.positions.append(
-            Position(is_long=True, lots=trade_lots, open_pri=self.now_price))
+            Position(units=self.account.balance * TRADE_RATIO, open_pri=self.now_price))
         return pl
 
     def sell(self):
         # longポジションをクローズ
-        pl = self.close(is_long=True)
+        pl = self.close(close_long=True, close_short=False)
         # 売りポジションを追加
         self.account.positions.append(
-            Position(is_long=False, lots=trade_lots, open_pri=self.now_price))
+            Position(units=-self.account.balance * TRADE_RATIO, open_pri=self.now_price))
         return pl

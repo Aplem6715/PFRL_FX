@@ -4,7 +4,7 @@ import torch
 import torch.nn
 import gym
 import numpy
-import fx_env
+import fx_env2
 import pandas as pd
 import datetime as dt
 from sklearn import preprocessing
@@ -20,8 +20,8 @@ train_df = df[((df['Datetime'] >= dt.datetime(2017, 1, 1))
 valid_df = df[((df['Datetime'] >= dt.datetime(2018, 6, 1))
                & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
 # 環境の生成
-train_env = fx_env.FxEnv(train_df, scaler)
-valid_env = fx_env.FxEnv(valid_df, scaler)
+train_env = fx_env2.FxEnv(train_df, scaler)
+valid_env = fx_env2.FxEnv(valid_df, scaler)
 
 # Q関数の定義
 obs_size = train_env.observation_space.low.size
