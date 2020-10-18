@@ -17,8 +17,10 @@ TECH_FILE_VALUE_MIN = -6.0
 TRADE_RATIO = 0.01
 # 2%で損切り　
 LOSS_CUT_RATIO = 0.02
-# 初期損益比率
-INIT_PL_RATIO = 1.0
+# 最大ポジションユニット数割合
+MAX_POSITION_UNIT_RATIO = 0.1
+# 最大ポジション超え罰則割合(資金の5%くらい)
+OVER_POSITION_DEMERIT = 0.05
 
 
 class Position():
@@ -129,6 +131,8 @@ class FxEnv(gym.Env):
             reward = self.sell()
 
         self.data_iter += 1
+        if abs(self.account.position_units) > MAX_POSITION_UNIT_RATIO:
+            reward -= self.account.balance * OVER_POSITION_DEMERIT
 
         return self._observe(), reward, self.done, self._info()
 
