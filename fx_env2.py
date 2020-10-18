@@ -18,9 +18,11 @@ TRADE_RATIO = 0.01
 # 2%で損切り　
 LOSS_CUT_RATIO = 0.02
 # 最大ポジションユニット数割合
-MAX_POSITION_UNIT_RATIO = 0.1
+MAX_POSITION_UNIT_RATIO = 0.01
 # 最大ポジション超え罰則割合(資金の5%くらい)
-OVER_POSITION_DEMERIT = 0.05
+OVER_POSITION_DEMERIT = -1
+
+PL_HIST_LENGTH = 10
 
 
 class Position():
@@ -86,8 +88,7 @@ class FxEnv(gym.Env):
 
         # 初期値の定義
         self.init_balance = 1000
-        self.profit = 0.0000001
-        self.loss = 0.0000001
+        self.pl_hist = []
 
         # 環境の設定
         self.action_space = gym.spaces.Discrete(4)
@@ -97,6 +98,19 @@ class FxEnv(gym.Env):
         return
 
     @property
+    def pl_rate(self):
+        profit = 0
+        loss = 0
+        for pl in self.pl_hist:
+            if pl > 0:
+                profit += pl
+            else:
+                loss += - pl
+        if loss == 0:
+            return 1000000
+        return profit/loss*100
+
+    @property
     def now_price(self):
         return self.df.iloc[self.data_iter]["Close"]
 
@@ -104,6 +118,10 @@ class FxEnv(gym.Env):
     def done(self):
         # データの終端で終了
         return (self.data_iter + 1 >= len(self.data)) or self.account.balance <= 0
+
+    @property
+    def trade_units(self):
+        return self.account.balance * TRADE_RATIO
 
     def reset(self):
         self.account = Account(self.init_balance)
@@ -121,24 +139,28 @@ class FxEnv(gym.Env):
             unrealized_pl < self.account.balance * LOSS_CUT_RATIO
 
         # アクションに応じて行動
+        if action == self.CLOSE and self.account.position_units == 0:
+            reward -= 1
         if action == self.CLOSE or done or is_loss_cut:
-            reward = self.close()
+            reward += self.close()
         elif action == self.STAY:
             pass
+        elif abs(self.account.position_units) + self.trade_units > self.account.balance * MAX_POSITION_UNIT_RATIO:
+            # ポジション上限を超えそうなら
+            # ペナルティを課して取引はしない
+            reward += OVER_POSITION_DEMERIT
         elif action == self.BUY:
-            reward = self.buy()
+            reward += self.buy()
         elif action == self.SELL:
-            reward = self.sell()
+            reward += self.sell()
 
         self.data_iter += 1
-        if abs(self.account.position_units) > MAX_POSITION_UNIT_RATIO:
-            reward -= self.account.balance * OVER_POSITION_DEMERIT
 
         return self._observe(), reward, self.done, self._info()
 
     def render(self):
-        print('{:.1f}% ({}/{},{})  balance:{:.1f}  position:{:.1f}  損益率:{:.1f}　　　　'.format(self.data_iter/len(self.data)
-                                                                                           * 100, self.data_iter, len(self.data), len(self.df), self.account.balance, self.account.position_units, self.profit/self.loss*100), end='\r')
+        print('{:>3.1f}% ({}/{})  balance:{:>5.1f}  position:{:>3.1f}  損益率:{:>3.1f}　　　　'.format(self.data_iter/len(self.data)
+                                                                                                * 100, self.data_iter, len(self.data), self.account.balance, self.account.position_units, self.pl_rate), end='\r')
         return
 
     def _observe(self):
@@ -149,10 +171,7 @@ class FxEnv(gym.Env):
         return {'balance': self.account.balance, 'datetime': self.df.iloc[self.data_iter]['Datetime']}
 
     def update_pips_stat(self, new_pips):
-        if new_pips > 0:
-            self.profit += new_pips
-        else:
-            self.loss += -new_pips
+        self.pl_hist.append(new_pips)
 
     # すべてのポジションを閉じて損益を返す
     def close(self, close_long=True, close_short=True):
@@ -175,7 +194,7 @@ class FxEnv(gym.Env):
         pl = self.close(close_long=False, close_short=True)
         # 買いポジションを追加
         self.account.positions.append(
-            Position(units=self.account.balance * TRADE_RATIO, open_pri=self.now_price))
+            Position(units=self.trade_units, open_pri=self.now_price))
         return pl
 
     def sell(self):
@@ -183,5 +202,5 @@ class FxEnv(gym.Env):
         pl = self.close(close_long=True, close_short=False)
         # 売りポジションを追加
         self.account.positions.append(
-            Position(units=-self.account.balance * TRADE_RATIO, open_pri=self.now_price))
+            Position(units=-self.trade_units, open_pri=self.now_price))
         return pl
