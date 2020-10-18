@@ -101,7 +101,7 @@ class FxEnv(gym.Env):
     @property
     def done(self):
         # データの終端で終了
-        return (self.data_iter + 1 >= len(self.data))
+        return (self.data_iter + 1 >= len(self.data)) or self.account.balance <= 0
 
     def reset(self):
         self.account = Account(self.init_balance)
@@ -130,12 +130,11 @@ class FxEnv(gym.Env):
 
         self.data_iter += 1
 
-
         return self._observe(), reward, self.done, self._info()
 
     def render(self):
-        print('{:.1f}% ({}/{},{})  balance:{:.1f}  position:{:.1f}  損益率:{:.1f}'.format(self.data_iter/len(self.data)
-                                                                                    * 100, self.data_iter, len(self.data), len(self.df), self.account.balance, self.account.position_units, self.profit/self.loss*100), end='\r')
+        print('{:.1f}% ({}/{},{})  balance:{:.1f}  position:{:.1f}  損益率:{:.1f}　　　　'.format(self.data_iter/len(self.data)
+                                                                                           * 100, self.data_iter, len(self.data), len(self.df), self.account.balance, self.account.position_units, self.profit/self.loss*100), end='\r')
         return
 
     def _observe(self):
