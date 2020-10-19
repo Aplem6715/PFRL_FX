@@ -134,7 +134,7 @@ class FxEnv(gym.Env):
         unrealized_pl = self.account.get_unrealized_pl(self.now_price)
 
         # ロスカット判定
-        is_loss_cut = unrealized_pl / self.account.balance < LOSS_CUT_RATIO
+        is_loss_cut = unrealized_pl / self.account.balance < -LOSS_CUT_RATIO
 
         done = self.done
         # アクションに応じて行動
