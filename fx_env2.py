@@ -126,6 +126,7 @@ class FxEnv(gym.Env):
     def reset(self):
         self.account = Account(self.init_balance)
         self.data_iter = self.window_size - 1
+        self.pl_hist.clear()
 
         return self._observe()
 
