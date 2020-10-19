@@ -13,14 +13,14 @@ TECH_FILE_VALUE_MAX = 130.0
 TECH_FILE_VALUE_MIN = -6.0
 
 # FX取引に関する定数
-# 所持金の1%を賭ける
-TRADE_RATIO = 0.01
+# 所持金の0.1%を賭ける
+TRADE_RATIO = 0.001
 # 2%で損切り　
 LOSS_CUT_RATIO = 0.02
 # 最大ポジションユニット数割合
-MAX_POSITION_UNIT_RATIO = 0.01
-# 最大ポジション超え罰則割合(資金の5%くらい)
-OVER_POSITION_DEMERIT = -1
+MAX_POSITION_UNIT_RATIO = 0.005
+# 最大ポジション超え罰則割合(資金の0.01%くらい)
+PENALTY_RATIO = -0.0001
 
 PL_HIST_LENGTH = 10
 
@@ -117,7 +117,7 @@ class FxEnv(gym.Env):
     @property
     def done(self):
         # データの終端で終了
-        return (self.data_iter + 1 >= len(self.data)) or self.account.balance <= 0
+        return (self.data_iter + 2 >= len(self.data)) or self.account.balance <= self.init_balance / 2
 
     @property
     def trade_units(self):
@@ -131,24 +131,26 @@ class FxEnv(gym.Env):
 
     def step(self, action):
         reward = 0
-        done = self.done
         unrealized_pl = self.account.get_unrealized_pl(self.now_price)
 
         # ロスカット判定
-        is_loss_cut = self.account.balance + \
-            unrealized_pl < self.account.balance * LOSS_CUT_RATIO
+        is_loss_cut = unrealized_pl / self.account.balance < LOSS_CUT_RATIO
 
+        done = self.done
         # アクションに応じて行動
+        # ポジションの保持無しでクローズしたらペナルティ
         if action == self.CLOSE and self.account.position_units == 0:
-            reward -= 1
+            reward += PENALTY_RATIO
         if action == self.CLOSE or done or is_loss_cut:
             reward += self.close()
         elif action == self.STAY:
             pass
-        elif abs(self.account.position_units) + self.trade_units > self.account.balance * MAX_POSITION_UNIT_RATIO:
+        elif (((action == self.BUY and self.account.position_units > 0) or
+               (action == self.SELL and self.account.position_units < 0)) and
+              abs(self.account.position_units) + self.trade_units > self.account.balance * MAX_POSITION_UNIT_RATIO):
             # ポジション上限を超えそうなら
             # ペナルティを課して取引はしない
-            reward += OVER_POSITION_DEMERIT
+            reward += PENALTY_RATIO
         elif action == self.BUY:
             reward += self.buy()
         elif action == self.SELL:
@@ -156,7 +158,7 @@ class FxEnv(gym.Env):
 
         self.data_iter += 1
 
-        return self._observe(), reward, self.done, self._info()
+        return self._observe(), reward/self.trade_units, done, self._info()
 
     def render(self):
         print('{:>3.1f}% ({}/{})  balance:{:>5.1f}  position:{:>3.1f}  損益率:{:>3.1f}　　　　'.format(self.data_iter/len(self.data)
@@ -165,7 +167,7 @@ class FxEnv(gym.Env):
 
     def _observe(self):
         return np.append(self.data[self.data_iter - self.window_size + 1: self.data_iter + 1].ravel(),
-                         [self.account.position_units, self.account.get_unrealized_pl(self.now_price)/self.account.balance])
+                         [self.account.position_units, self.account.get_unrealized_pl(self.now_price)/self.trade_units])
 
     def _info(self):
         return {'balance': self.account.balance, 'datetime': self.df.iloc[self.data_iter]['Datetime']}
