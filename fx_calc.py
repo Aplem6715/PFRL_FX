@@ -1,6 +1,6 @@
 import numpy as np
 
-LEVERAGE = 25
+LEVERAGE = 25.0
 SPREAD = 0.003
 MARGIN_RATIO = 1 / LEVERAGE
 
