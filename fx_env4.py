@@ -79,10 +79,9 @@ class Account():
 class FxEnv(gym.Env):
     def __init__(self, tech_df, scaler):
         # 定数の定義
-        self.STAY = 0
+        self.CLOSE = 0
         self.BUY = 1
         self.SELL = 2
-        self.CLOSE = 3
 
         # 学習に関する設定
         self.window_size = 5  # 過去何本分のロウソクを見るか
@@ -100,7 +99,7 @@ class FxEnv(gym.Env):
         self.losses = []
 
         # 環境の設定
-        self.action_space = gym.spaces.Discrete(4)
+        self.action_space = gym.spaces.Discrete(3)
         self.observation_space = gym.spaces.Box(
             low=0, high=1,
             shape=(self.window_size*self.data.shape[1]+2, ))
@@ -123,7 +122,7 @@ class FxEnv(gym.Env):
 
     @property
     def trade_units(self):
-        return self.account.balance * TRADE_RATIO
+        return self.account.balance * MAX_POSITION_UNIT_RATIO
 
     def reset(self):
         self.account = Account(self.init_balance)
@@ -149,15 +148,10 @@ class FxEnv(gym.Env):
             reward += PENALTY_RATIO
         if action == self.CLOSE or done or is_loss_cut:
             reward += self.close()
-        elif action == self.STAY:
-            # self.account.get_unrealized_pips(self.now_price) / 10
-            reward += 0
-        elif (((action == self.BUY and self.account.position_units > 0) or
-               (action == self.SELL and self.account.position_units < 0)) and
-              abs(self.account.position_units) + self.trade_units > self.account.balance * MAX_POSITION_UNIT_RATIO):
-            # ポジション上限を超えそうなら
-            # ペナルティを課して取引はしない
-            reward += PENALTY_RATIO
+        elif ((action == self.BUY and self.account.position_units > 0) or
+              (action == self.SELL and self.account.position_units < 0)):
+            # ポジション上限を超えそうなら取引はしない
+            pass
         elif action == self.BUY:
             reward += self.buy()
         elif action == self.SELL:

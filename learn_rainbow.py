@@ -199,7 +199,7 @@ def main():
 
     pickle.dump(scaler, open('scaler.pkl', 'wb'))
 
-    train_df = df[((df['Datetime'] >= dt.datetime(2016, 1, 1))
+    train_df = df[((df['Datetime'] >= dt.datetime(2017, 1, 1))
                    & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
     valid_df = df[((df['Datetime'] >= dt.datetime(2018, 6, 1))
                    & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
@@ -279,8 +279,8 @@ def main():
     n_obs = env.observation_space.low.size
 
     n_atoms = 51
-    v_max = 10
-    v_min = -10
+    v_max = 5
+    v_min = -5
     # 128ユニット3層のDeep Q関数
     q_func = DistributionalFCStateQFunctionWithDiscreteAction(
         n_obs, n_actions, n_atoms, v_min, v_max, 128, 3)
