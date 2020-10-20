@@ -114,7 +114,7 @@ class FxEnv(gym.Env):
 
     @property
     def now_price(self):
-        return self.df.iloc[self.data_iter]["Close"]
+        return self.df.iat[self.data_iter, 4]
 
     @property
     def done(self):
@@ -174,7 +174,7 @@ class FxEnv(gym.Env):
                          [self.account.position_units/self.trade_units, self.account.get_unrealized_pips(self.now_price)])
 
     def _info(self):
-        return {'balance': self.account.balance, 'datetime': self.df.iloc[self.data_iter]['Datetime']}
+        return {'balance': self.account.balance, 'datetime': self.df.iat[self.data_iter, 0]}
 
     def update_pips_stat(self, new_pips):
         if new_pips < 0:
