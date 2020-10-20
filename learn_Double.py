@@ -4,9 +4,10 @@ import torch
 import torch.nn
 import gym
 import numpy
-import fx_env2
+import fx_env3
 import pandas as pd
 import datetime as dt
+import cProfile
 from sklearn import preprocessing
 
 
@@ -17,19 +18,19 @@ scaler.fit(df.iloc[:, 1:])
 
 train_df = df[((df['Datetime'] >= dt.datetime(2017, 1, 1))
                & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
-valid_df = df[((df['Datetime'] >= dt.datetime(2018, 6, 1))
+valid_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
                & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
 # 環境の生成
-train_env = fx_env2.FxEnv(train_df, scaler)
-valid_env = fx_env2.FxEnv(valid_df, scaler)
+train_env = fx_env3.FxEnv(train_df, scaler)
+valid_env = fx_env3.FxEnv(valid_df, scaler)
 
 # Q関数の定義
 obs_size = train_env.observation_space.low.size
 n_actions = train_env.action_space.n
 q_func = torch.nn.Sequential(
-    torch.nn.Linear(obs_size, 128),
+    torch.nn.Linear(obs_size, 64),
     torch.nn.ReLU(),
-    torch.nn.Linear(128, 64),
+    torch.nn.Linear(64, 64),
     torch.nn.ReLU(),
     torch.nn.Linear(64, n_actions),
     pfrl.q_functions.DiscreteActionValueHead(),
@@ -53,59 +54,71 @@ agent = pfrl.agents.DoubleDQN(
 )
 
 # エージェントの学習
-n_episodes = 50  # エピソード数
-
-# エピソードの反復
-for i in range(1, n_episodes + 1):
-    # 環境のリセット
-    obs = train_env.reset()
-    R = 0  # エピソード報酬
-
-    # ステップの反復
-    while True:
-        # 環境の描画
-        train_env.render()
-
-        # 行動の推論
-        action = agent.act(obs)
-
-        # 環境の1ステップ実行
-        obs, reward, done, _ = train_env.step(action)
-        R += reward
-        agent.observe(obs, reward, done, False)
-
-        # エピソード完了
-        if done:
-            break
-
-    # ログ出力
-    if i % 1 == 0:
-        print('episode:', i, 'R:{:.3f}'.format(R), '                  ')
-    if i % 50 == 0:
-        print('statistics:', agent.get_statistics())
-print('Finished.')
+n_episodes = 10  # エピソード数
 
 
-# エージェントのテスト
-with agent.eval_mode():
-    # 環境のリセット
-    obs = valid_env.reset()
-    R = 0  # エピソード報酬
+def train():
+    # エピソードの反復
+    for i in range(1, n_episodes + 1):
+        # 環境のリセット
+        obs = train_env.reset()
+        rewards = []
+        steps = 0
+        R = 0  # エピソード報酬
 
-    # ステップの反復
-    while True:
-        # 環境の描画
-        valid_env.render()
+        # ステップの反復
+        while True:
+            steps += 1
+            # 環境の描画
+            train_env.render()
 
-        # 環境の1ステップ実行
-        action = agent.act(obs)
-        obs, r, done, _ = valid_env.step(action)
-        R += r
-        agent.observe(obs, r, done, False)
+            # 行動の推論
+            action = agent.act(obs)
 
-        # エピソード完了
-        if done:
-            break
-    print('R:', R)
+            # 環境の1ステップ実行
+            obs, reward, done, _ = train_env.step(action)
+            rewards.append(reward)
+            R += reward
+            agent.observe(obs, reward, done, False)
 
-agent.save('agent_double')
+            # エピソード完了
+            if done:
+                break
+
+        # ログ出力
+        if i % 1 == 0 and i != 0:
+            print('episode:', i,  '\tR:{:.1f}\t\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}'.format(
+                R, R/steps, min(rewards), max(rewards), train_env.account.balance), '                                           ')
+        if i % 5 == 0:
+            # エージェントのテスト
+            with agent.eval_mode():
+                # 環境のリセット
+                obs = valid_env.reset()
+                rewards = []
+                R = 0  # エピソード報酬
+
+                # ステップの反復
+                while True:
+                    # 環境の描画
+                    valid_env.render()
+
+                    # 環境の1ステップ実行
+                    action = agent.act(obs)
+                    obs, r, done, _ = valid_env.step(action)
+                    rewards.append(r)
+                    steps += 1
+                    R += r
+                    agent.observe(obs, r, done, False)
+
+                    # エピソード完了
+                    if done:
+                        break
+                print('\tR:{:.1f}\t\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}'.format(
+                    R, R/steps, min(rewards), max(rewards), valid_env.account.balance))
+    print('Finished.')
+
+    agent.save('agent_double')
+
+
+if __name__ == '__main__':
+    cProfile.run('train()', filename='train.prof')
