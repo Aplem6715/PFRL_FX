@@ -17,7 +17,7 @@ df = pd.read_csv('M30_201001-201912_Tech7.csv', parse_dates=[0])
 scaler = preprocessing.MinMaxScaler()
 scaler.fit(df.iloc[:, 1:])
 
-train_df = df[((df['Datetime'] >= dt.datetime(2017, 1, 1))
+train_df = df[((df['Datetime'] >= dt.datetime(2014, 1, 1))
                & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
 valid_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
                & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
@@ -29,11 +29,11 @@ valid_env = fx_env_evo.FxEnv(valid_df, scaler, fx_env_evo.FxEnv.TEST_MODE)
 obs_size = train_env.observation_space.low.size
 n_actions = train_env.action_space.n
 q_func = torch.nn.Sequential(
-    torch.nn.Linear(obs_size, 64),
+    torch.nn.Linear(obs_size, 128),
     torch.nn.ReLU(),
-    torch.nn.Linear(64, 32),
+    torch.nn.Linear(128, 64),
     torch.nn.ReLU(),
-    torch.nn.Linear(32, n_actions),
+    torch.nn.Linear(64, n_actions),
     pfrl.q_functions.DiscreteActionValueHead(),
 )
 
@@ -41,10 +41,11 @@ q_func = torch.nn.Sequential(
 # エージェントの生成
 agent = pfrl.agents.DoubleDQN(
     q_func,  # Q関数
-    optimizer=torch.optim.Adam(q_func.parameters(), eps=1e-2),  # オプティマイザ
+    optimizer=torch.optim.Adam(
+        q_func.parameters(), lr=0.0001),  # オプティマイザ
     replay_buffer=pfrl.replay_buffers.ReplayBuffer(
         capacity=10 ** 6),  # リプレイバッファ
-    gamma=0.99,  # 将来の報酬割引率
+    gamma=0.50,  # 将来の報酬割引率
     explorer=pfrl.explorers.ConstantEpsilonGreedy(  # 探索(ε-greedy)
         epsilon=0.3, random_action_func=train_env.action_space.sample),
     replay_start_size=1000,  # リプレイ開始サイズ
@@ -55,7 +56,7 @@ agent = pfrl.agents.DoubleDQN(
 )
 
 # エージェントの学習
-n_episodes = 50  # エピソード数
+n_episodes = 100  # エピソード数
 
 
 def train():
@@ -88,8 +89,16 @@ def train():
 
         # ログ出力
         if i % 1 == 0 and i != 0:
-            print('episode:', i,  '\tR:{:.1f}\t\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}'.format(
-                R, R / steps, min(rewards), max(rewards), train_env.broker.balance), '                                           ')
+            print('episode:', i, '\tR:{:.1f}\tnb_trade:{}\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}                                           '
+                  .format(
+                      R,
+                      len(train_env.broker.long_hists) +
+                      len(train_env.broker.short_hists),
+                      R / steps,
+                      min(rewards), max(rewards),
+                      train_env.broker.balance
+                  )
+                  )
         if i % 5 == 0:
             # エージェントのテスト
             with agent.eval_mode():
@@ -114,8 +123,16 @@ def train():
                     # エピソード完了
                     if done:
                         break
-                print('R:{:.1f}\t\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}'.format(
-                    R, R/steps, min(rewards), max(rewards), valid_env.broker.balance))
+                print('R:{:.1f}\tnb_trade:{}\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}                                           '
+                      .format(
+                          R,
+                          len(valid_env.broker.long_hists) +
+                          len(valid_env.broker.short_hists),
+                          R / steps,
+                          min(rewards), max(rewards),
+                          valid_env.broker.balance
+                      )
+                      )
     print('Finished.')
 
     agent.save('agent_double')

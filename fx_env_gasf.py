@@ -149,7 +149,6 @@ class Broker():
         self.prev_price = self.now_price
         self.now_price = self.df.Close.iloc[self.iter]
         self.now_time = self.df.Datetime.iloc[self.iter]
-        self.now_SMA5 = self.df.SMA5.iloc[self.iter]
         self.iter += 1
         return self.iter >= len(self.df)-1 or self.balance <= 0
 
@@ -188,7 +187,7 @@ class Broker():
         self.balance += pl
 
 
-class FxEnv(gym.Env):
+class FxEnv_GASF(gym.Env):
     TEST_MODE = 'test'
     TRAIN_MODE = 'train'
 
