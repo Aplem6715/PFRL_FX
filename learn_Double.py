@@ -4,10 +4,11 @@ import torch
 import torch.nn
 import gym
 import numpy
-import fx_env4
+import fx_env_evo
 import pandas as pd
 import datetime as dt
 import cProfile
+import pprint
 from sklearn import preprocessing
 
 
@@ -21,8 +22,8 @@ train_df = df[((df['Datetime'] >= dt.datetime(2017, 1, 1))
 valid_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
                & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
 # 環境の生成
-train_env = fx_env4.FxEnv(train_df, scaler)
-valid_env = fx_env4.FxEnv(valid_df, scaler)
+train_env = fx_env_evo.FxEnv(train_df, scaler, fx_env_evo.FxEnv.TRAIN_MODE)
+valid_env = fx_env_evo.FxEnv(valid_df, scaler, fx_env_evo.FxEnv.TEST_MODE)
 
 # Q関数の定義
 obs_size = train_env.observation_space.low.size
@@ -88,7 +89,7 @@ def train():
         # ログ出力
         if i % 1 == 0 and i != 0:
             print('episode:', i,  '\tR:{:.1f}\t\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}'.format(
-                R, R/steps, min(rewards), max(rewards), train_env.account.balance), '                                           ')
+                R, R / steps, min(rewards), max(rewards), train_env.broker.balance), '                                           ')
         if i % 5 == 0:
             # エージェントのテスト
             with agent.eval_mode():
@@ -114,7 +115,7 @@ def train():
                     if done:
                         break
                 print('R:{:.1f}\t\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}'.format(
-                    R, R/steps, min(rewards), max(rewards), valid_env.account.balance))
+                    R, R/steps, min(rewards), max(rewards), valid_env.broker.balance))
     print('Finished.')
 
     agent.save('agent_double')

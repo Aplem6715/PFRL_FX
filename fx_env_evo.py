@@ -11,10 +11,11 @@ STAY = 0
 BUY = 1
 SELL = 2
 
+TECH_SAFE_START_IDX = 170
 TECH_DATA_WINDOW = 5
 
-LEVERAGE = 25
-MARGIN_RATIO = 1/LEVERAGE
+LEVERAGE = 25.0
+MARGIN_RATIO = 1.0/LEVERAGE
 INIT_BALANCE = 1000.0
 PRICE_TO_PIPS = 100
 PIPS_TO_PRICE = 0.01
@@ -42,12 +43,12 @@ def price2pips(price):
 
 
 class Position():
-    def __init__(self, open_price, size, broker: Broker):
+    def __init__(self, open_price, size, broker):
         self.size = size
         self.open_price = open_price
         self.broker = broker  # type: Broker
         self.open_time = broker.now_time
-        self.close_time = dt.datetime()
+        self.close_time = dt.datetime(2000, 1, 1)
 
     @property
     def is_long(self):
@@ -73,14 +74,10 @@ class Position():
 class Broker():
     def __init__(self, leverage, balance, df, scaler):
         # 現ステップでの時刻
-        self.now_time = dt.datetime()
+        self.now_time = dt.datetime(2000, 1, 1)
         # 現ステップでのClose値
         self.now_price = 0
         self.prev_price = 0
-
-        # 必要証拠金割合を設定
-        self.leverage = leverage
-        self.margin = 1/leverage
 
         # 残高
         self.balance = balance
@@ -96,10 +93,10 @@ class Broker():
         self.iter = 0
         self.df = df
         self.data = self.df.values[:, 1:]
-        self.data = scaler.transform(data)  # type: np.ndarray
+        self.data = scaler.transform(self.data)  # type: np.ndarray
 
         self.volatility_arr = []
-        self.setup_volatility_arr(self.df.Close.values.tolist())
+        self.setup_volatility_arr(self.df.Close.values.tolist(), 96)
 
     def setup_volatility_arr(self, rate_arr, window_size):
         local_window_size = window_size
@@ -110,7 +107,7 @@ class Broker():
                 s = (idx + 1) - local_window_size
                 tmp_arr = rate_arr[s:idx + 1]
                 self.volatility_arr.append(
-                    self.calculate_volatility(tmp_arr, local_window_size))
+                    fx_calc.calculate_volatility(tmp_arr, local_window_size))
 
     @property
     def has_long(self):
@@ -128,7 +125,8 @@ class Broker():
     # 取引ポジションサイズ
     @property
     def trade_size(self):
-        return self.balance * RISK_THRESH / pips2price(LOSS_CUT_PIPS)
+        # return self.balance * RISK_THRESH / pips2price(LOSS_CUT_PIPS)
+        return 100
 
     # 必要証拠金
     @property
@@ -145,10 +143,10 @@ class Broker():
     # return: is_last
     def update(self):
         self.prev_price = self.now_price
-        self.now_price = self.df.Close[self.iter]
-        self.now_time = self.df.Datetime[self.iter]
+        self.now_price = self.df.Close.iloc[self.iter]
+        self.now_time = self.df.Datetime.iloc[self.iter]
         self.iter += 1
-        return self.iter >= len(self.df)
+        return self.iter >= len(self.df)-1 or self.balance <= 0
 
     # ロスカットが必要かどうか
     def need_loss_cut(self):
@@ -182,6 +180,7 @@ class Broker():
                     self.short_hists.append(pos)
                 # 保持ポジションリストから削除
                 self.positions.remove(pos)
+        self.balance += pl
 
 
 class FxEnv(gym.Env):
@@ -192,18 +191,22 @@ class FxEnv(gym.Env):
         self.scaler = scaler
         self.df = tech_df
         self.mode = mode
-        self.action_hist = []
-        self.broker = Broker(MARGIN_RATIO, INIT_BALANCE)
+        self.action_hist = [0, 0, 0]
+        self.broker = Broker(LEVERAGE, INIT_BALANCE, tech_df, scaler)
 
         self.action_space = gym.spaces.Discrete(3)
         obs_min = min(-1, self.broker.data.min())
         obs_max = max(1, self.broker.data.max())
         self.observation_space = gym.spaces.Box(
             low=obs_min, high=obs_max,
-            shape=(self.window_size*self.data.shape[1]+1, ))
+            shape=(TECH_DATA_WINDOW * self.broker.data.shape[1] + 1,))
+        self.reward_range = (-50.0, 50.0)
 
     def reset(self):
-        self.broker = Broker(MARGIN_RATIO, INIT_BALANCE)
+        self.broker = Broker(MARGIN_RATIO, INIT_BALANCE, self.df, self.scaler)
+        for _ in range(TECH_SAFE_START_IDX):
+            self.broker.update()
+        return self.observe()
 
     def step(self, action):
         done = self.broker.update()
@@ -217,15 +220,16 @@ class FxEnv(gym.Env):
         elif action == SELL and not self.broker.has_short:
             self.broker.close()
             self.broker.sell()
-        self.action_hist.append(action)
+        self.action_hist.append(action2int(action))
 
         return self.observe(), self.calc_rewerd(), done, {}
 
     def render(self):
-        if mode == self.TEST_MODE:
+        if self.mode == self.TEST_MODE:
             pass
-        elif mode == self.TRAIN_MODE:
-            pass
+        elif self.mode == self.TRAIN_MODE:
+            print('{:>3.1f}% ({}/{})  balance:{:>5.1f}  position:{:>3.1f}                      '.format(self.broker.iter/len(
+                self.broker.data) * 100, self.broker.iter, len(self.broker.data), self.broker.balance, self.broker.position_size), end='\r')
 
     def observe(self):
         tech_data = self.broker.get_tech_data()
@@ -238,7 +242,6 @@ class FxEnv(gym.Env):
         return np.append(tech_data.ravel(), [position_state])
 
     # 利益計算（https://qiita.com/ryo_grid/items/1552d70eb2a8c15f6fd2 参照）
-
     def calc_rewerd(self):
         # 取引量（１でいいらしい
         mu = 1
@@ -256,7 +259,7 @@ class FxEnv(gym.Env):
         p1 = self.broker.prev_price
         rt = self.broker.now_price - self.broker.prev_price
 
-        return mu*(A1*(sigma_tgt/sigma1) - bp*p1*abs((sigma_tgt/sigma1)*A1 - (sigma_tgt/sigma2)*A2))
+        return mu*(A1*(sigma_tgt/sigma1)*rt - bp*p1*abs((sigma_tgt/sigma1)*A1 - (sigma_tgt/sigma2)*A2))
 
     def close(self):
         if mode == self.TEST_MODE:

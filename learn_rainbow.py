@@ -8,7 +8,7 @@ import pickle
 import numpy as np
 import pandas as pd
 import datetime as dt
-import fx_env2
+import fx_env_evo
 
 from sklearn import preprocessing
 
@@ -73,7 +73,7 @@ def train_agent(
                 logger.info(
                     "step:%s episode:%s R:{:.1f} balance:{:.1f}".format(
                         episode_r,
-                        env.account.balance),
+                        env.broker.balance),
                     t,
                     episode_idx,
                 )
@@ -192,7 +192,7 @@ def train_agent_with_evaluation(
 
 
 def main():
-    df = pd.read_csv('M30_201001-201912_Tech7.csv', parse_dates=[0])
+    df = pd.read_csv('./../M30_201001-201912_Tech7.csv', parse_dates=[0])
 
     scaler = preprocessing.MinMaxScaler()
     scaler.fit(df.iloc[:, 1:])
@@ -268,9 +268,9 @@ def main():
 
     def make_env(test):
         if test:
-            return fx_env2.FxEnv(valid_df, scaler)
+            return fx_env_evo.FxEnv(valid_df, scaler, mode=fx_env_evo.FxEnv.TEST_MODE)
         else:
-            return fx_env2.FxEnv(train_df, scaler)
+            return fx_env_evo.FxEnv(train_df, scaler, mode=fx_env_evo.FxEnv.TRAIN_MODE)
 
     env = make_env(test=False)
     eval_env = make_env(test=True)

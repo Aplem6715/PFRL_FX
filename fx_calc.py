@@ -16,7 +16,7 @@ def calc_pl(open_price, now_price, units):
     return (now_price - open_price) * LEVERAGE * units - SPREAD * LEVERAGE * np.sign(units)
 
 
-def calculate_volatility(self, partial_price_arr, window_size):
+def calculate_volatility(partial_price_arr, window_size):
     alpha = 2 / float(window_size + 1)
     ema_arr = []
     emvar_arr = []
