@@ -105,23 +105,26 @@ class Broker():
         return self.position_size * MARGIN_RATIO
 
     # 内部状態を更新する（各ステップの最初に必ず呼び出す)
-
     def update(self):
         self.now_price = self.df.Close[self.iter]
         self.now_time = self.df.Datetime[self.iter]
         self.iter += 1
 
+    # ロスカットが必要かどうか
+    def need_loss_cut(self):
+        return self.margin > self.max_allowable_loss
+
     # ポジションを作成
-    def open_position(self, price, size):
-        pos = Position(price, size, self)
+    def open_position(self, size):
+        pos = Position(self.now_price, size, self)
         self.positions.append(pos)
         self.position_size += size
 
     def buy(self):
-        pass
+        self.open_position(self.trade_size)
 
     def sell(self):
-        pass
+        self.open_position(-self.trade_size)
 
     # ポジションを確定する
     def close(self, close_long=True, close_short=True):
@@ -157,6 +160,7 @@ class FxEnv(gym.Env):
 
     def step(self, action):
         self.broker.update()
+        # need_loss_cut = self.broker.need_loss_cut()
         if action == STAY:
             pass
         elif action == BUY and not self.broker.has_long:
