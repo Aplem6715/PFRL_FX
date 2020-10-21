@@ -11,6 +11,8 @@ STAY = 0
 BUY = 1
 SELL = 2
 
+TECH_DATA_WINDOW = 5
+
 LEVERAGE = 25
 MARGIN_RATIO = 1/LEVERAGE
 INIT_BALANCE = 1000.0
@@ -69,7 +71,7 @@ class Position():
 
 
 class Broker():
-    def __init__(self, leverage, balance, df):
+    def __init__(self, leverage, balance, df, scaler):
         # 現ステップでの時刻
         self.now_time = dt.datetime()
         # 現ステップでのClose値
@@ -93,6 +95,8 @@ class Broker():
         # ステップイテレータ
         self.iter = 0
         self.df = df
+        self.data = self.df.values[:, 1:]
+        self.data = scaler.transform(data)  # type: np.ndarray
 
         self.volatility_arr = []
         self.setup_volatility_arr(self.df.Close.values.tolist())
@@ -133,6 +137,9 @@ class Broker():
 
     def get_volatility(self, delta):
         return self.volatility_arr[self.iter + delta]
+
+    def get_tech_data(self):
+        return self.data[self.iter-TECH_DATA_WINDOW+1:self.iter+1]
 
     # 内部状態を更新する（各ステップの最初に必ず呼び出す)
     # return: is_last
@@ -188,6 +195,13 @@ class FxEnv(gym.Env):
         self.action_hist = []
         self.broker = Broker(MARGIN_RATIO, INIT_BALANCE)
 
+        self.action_space = gym.spaces.Discrete(3)
+        obs_min = min(-1, self.broker.data.min())
+        obs_max = max(1, self.broker.data.max())
+        self.observation_space = gym.spaces.Box(
+            low=obs_min, high=obs_max,
+            shape=(self.window_size*self.data.shape[1]+1, ))
+
     def reset(self):
         self.broker = Broker(MARGIN_RATIO, INIT_BALANCE)
 
@@ -214,9 +228,17 @@ class FxEnv(gym.Env):
             pass
 
     def observe(self):
-        pass
+        tech_data = self.broker.get_tech_data()
+        if self.broker.has_long:
+            position_state = 1.0
+        elif self.broker.has_short:
+            position_state = -1.0
+        else:
+            position_state = 0.0
+        return np.append(tech_data.ravel(), [position_state])
 
     # 利益計算（https://qiita.com/ryo_grid/items/1552d70eb2a8c15f6fd2 参照）
+
     def calc_rewerd(self):
         # 取引量（１でいいらしい
         mu = 1
