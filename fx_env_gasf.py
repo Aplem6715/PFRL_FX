@@ -13,7 +13,7 @@ BUY = 1
 SELL = 2
 CLOSE = 3
 
-TECH_SAFE_START_IDX = 32
+TECH_SAFE_START_IDX = 170
 
 SPREAD = 0.003
 LEVERAGE = 25.0
@@ -192,21 +192,21 @@ class FxEnv_GASF(gym.Env):
 
     def __init__(self, df, mode: str):
         self.df = df
-        self.gasf = processing.get_ohlc_culr_gasf(df.loc[:, 'Open':'Close'])
+        self.gasf = processing.get_ohlc_culr_gasf(df.loc[:, 'Open': 'Close'])
+        self.gasf = processing.nwhc2nchw_array(self.gasf)
         self.mode = mode
         self.action_hist = [0, 0, 0]
-        self.broker = Broker(LEVERAGE, INIT_BALANCE, self.df, gasf=self.gasf)
+        self.broker = Broker(LEVERAGE, INIT_BALANCE, self.df, self.gasf)
 
         self.action_space = gym.spaces.Discrete(4)
         self.observation_space = gym.spaces.Box(
             low=-1, high=1,
-            # w, h, ch
-            shape=(self.gasf.shape[1], self.gasf.shape[2], self.gasf.shape[3]))
+            # ch, h, w
+            shape=(self.gasf.shape[1], self.gasf.shape[2], self.gasf.shape[3], ))
         self.reward_range = (-50.0, 50.0)
 
     def reset(self):
-        self.broker = Broker(MARGIN_RATIO, INIT_BALANCE,
-                             self.df, self.ohlc_gasf, self.culr_gasf)
+        self.broker = Broker(MARGIN_RATIO, INIT_BALANCE, self.df, self.gasf)
         for _ in range(TECH_SAFE_START_IDX):
             self.broker.update()
         return self.observe()
@@ -233,11 +233,12 @@ class FxEnv_GASF(gym.Env):
         if self.mode == self.TEST_MODE:
             pass
         elif self.mode == self.TRAIN_MODE:
-            print('{:>3.1f}% ({}/{})  balance:{:>5.1f}  position:{:>3.1f}                      '.format(self.broker.iter/len(
-                self.broker.data) * 100, self.broker.iter, len(self.broker.data), self.broker.balance, self.broker.position_size), end='\r')
+            print('{:>3.1f}% ({}/{})  balance:{:>5.1f}  position:{:>3.1f}                      '.format(self.broker.iter /
+                                                                                                        self.broker.gasf.shape[0] * 100, self.broker.iter, self.broker.gasf.shape[0], self.broker.balance, self.broker.position_size), end='\r')
 
     def observe(self):
         gasf = self.broker.get_gasf_data()
+        #gasf = gasf.reshape((1, ) + gasf.shape)
         return gasf
 
     # 利益計算（https://qiita.com/ryo_grid/items/1552d70eb2a8c15f6fd2 参照）

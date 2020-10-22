@@ -7,6 +7,7 @@ https://github.com/pecu/FinancialVision/tree/master/Encoding%20candlesticks%20as
 import numpy as np
 import pandas as pd
 import datetime as dt
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 
@@ -45,7 +46,7 @@ def get_gasf(arr):
     '''
     arr = arr.copy()
     gasf = np.zeros((arr.shape[0], arr.shape[1], arr.shape[1], arr.shape[2]))
-    for i in range(arr.shape[0]):
+    for i in tqdm(range(arr.shape[0])):
         for c in range(arr.shape[2]):
             each_channel = arr[i, :, c]
             c_max = np.amax(each_channel)
@@ -100,10 +101,22 @@ def get_culr_gasf(ohlc_df):
 def get_ohlc_culr_gasf(ohlc_df):
     ohlc_data = create_ts_with_window(ohlc_df.values, 32)
     culr_data = ohlc2culr(ohlc_data)
+    print('Creating OHLC GASF')
     ohlc_gasf = get_gasf(ohlc_data)
+    print('Creating CULR GASF')
     culr_gasf = get_gasf(culr_data)
     con = np.concatenate([ohlc_gasf, culr_gasf], axis=3)
     return con
+
+
+# nb, width, height, ch -> nb, ch, width, height
+def nwhc2nchw_array(arr: np.ndarray):
+    return arr.transpose(0, 3, 2, 1)
+
+
+# nb, ch, width, height -> nb, width, height, ch
+def nchw2nwhc_array(arr: np.ndarray):
+    return arr.transpose(0, 3, 2, 1)
 
 
 if __name__ == '__main__':

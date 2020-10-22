@@ -12,10 +12,10 @@ import pprint
 from sklearn import preprocessing
 
 
-nb_kernel1 = 32
-nb_kernel2 = 32
+nb_kernel1 = 16
+nb_kernel2 = 16
 k_size1 = 4
-k_size2 = 3
+k_size2 = 4
 k_stride1 = 2
 k_stride2 = 1
 
@@ -24,9 +24,9 @@ df = pd.read_csv('M30_201001-201912_Tech7.csv', parse_dates=[0])
 scaler = preprocessing.MinMaxScaler()
 scaler.fit(df.iloc[:, 1:])
 
-train_df = df[((df['Datetime'] >= dt.datetime(2017, 12, 1))
+train_df = df[((df['Datetime'] >= dt.datetime(2017, 12, 20))
                & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
-valid_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
+valid_df = df[((df['Datetime'] >= dt.datetime(2018, 12, 20))
                & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
 # 環境の生成
 train_env = fx_env_gasf.FxEnv_GASF(
@@ -35,14 +35,16 @@ valid_env = fx_env_gasf.FxEnv_GASF(
     valid_df, fx_env_gasf.FxEnv_GASF.TEST_MODE)
 
 # Q関数の定義
-obs_shape = train_env.observation_space.shape
+obs_shape = train_env.observation_space.low.shape
 n_actions = train_env.action_space.n
-input_size = int((obs_shape[0] - k_size1) / k_stride1)
-input_size = int((input_size - k_size2) / k_stride2)
+obs_ch = obs_shape[0]
+obs_width = obs_shape[1]
+input_size = int((obs_width - k_size1) / k_stride1) + 1
+input_size = int((input_size - k_size2) / k_stride2) + 1
 
 
 q_func = torch.nn.Sequential(
-    torch.nn.Conv2d(obs_shape[2], nb_kernel1, k_size1, stride=k_stride1),
+    torch.nn.Conv2d(obs_ch, nb_kernel1, k_size1, stride=k_stride1),
     torch.nn.ReLU(),
     torch.nn.Conv2d(nb_kernel1, nb_kernel2, k_size2, stride=k_stride2),
     torch.nn.ReLU(),
@@ -50,10 +52,9 @@ q_func = torch.nn.Sequential(
     #torch.nn.Conv2d(obs_size, 32, 8, stride=4),
     torch.nn.Linear(input_size*input_size*nb_kernel2, 128),
     torch.nn.ReLU(),
-    torch.nn.Linear(128, 64),
+    torch.nn.Linear(128, n_actions),
     pfrl.q_functions.DiscreteActionValueHead(),
 )
-
 
 # エージェントの生成
 agent = pfrl.agents.DoubleDQN(
