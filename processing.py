@@ -5,6 +5,9 @@ https://github.com/pecu/FinancialVision/tree/master/Encoding%20candlesticks%20as
 '''
 
 import numpy as np
+import pandas as pd
+import datetime as dt
+import matplotlib.pyplot as plt
 
 
 def ts2gasf(ts, max_v, min_v):
@@ -65,3 +68,66 @@ def ohlc2culr(ohlc):
     culr[:, :, 2] = np.minimum(ohlc[:, :, 0], ohlc[:, :, -1]) - ohlc[:, :, 2]
     culr[:, :, 3] = ohlc[:, :, -1] - ohlc[:, :, 0]
     return culr
+
+
+def create_ts_with_window(ts2d, window_size):
+    '''
+    Args:
+        ts2d (numpy): (N, 4)
+        ohlc とか culr
+    Returns:
+        ts_data (numpy): (N, window_size, 4)
+    '''
+    ts_data = np.zeros((ts2d.shape[0], window_size, ts2d.shape[1]))
+    for i in range(window_size-1, ts2d.shape[0]):
+        ts_data[i, :, :] = ts2d[i - window_size + 1: i + 1, :]
+    return ts_data
+
+
+def get_ohlc_gasf(ohlc_df):
+    ts_data = create_ts_with_window(df.values, 32)
+    gasf = get_gasf(ts_data)
+    return gasf
+
+
+def get_culr_gasf(ohlc_df):
+    ts_data = create_ts_with_window(df.values, 32)
+    ts_data = ohlc2culr(ts_data)
+    gasf = get_gasf(ts_data)
+    return gasf
+
+
+def get_ohlc_culr_gasf(ohlc_df):
+    ohlc_data = create_ts_with_window(ohlc_df.values, 32)
+    culr_data = ohlc2culr(ohlc_data)
+    ohlc_gasf = get_gasf(ohlc_data)
+    culr_gasf = get_gasf(culr_data)
+    con = np.concatenate([ohlc_gasf, culr_gasf], axis=3)
+    return con
+
+
+if __name__ == '__main__':
+    df = pd.read_csv('M30_201001-201912_Tech7.csv', parse_dates=[0])
+    df = df[((df['Datetime'] >= dt.datetime(2017, 12, 1))
+             & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
+    df = df.loc[:, 'Open': 'Close']
+    ts_data = get_ohlc_culr_gasf(df)
+    plt.imshow(ts_data[32, :, :, 0], cmap='gray', vmin=-1,
+               vmax=1, interpolation='none')
+    plt.show()
+    print(ts_data.shape)
+
+'''
+    plt.imshow(gasf[32, :, :, 0], cmap='gray', vmin=-1,
+               vmax=1, interpolation='none')
+    plt.show()
+    plt.imshow(gasf[32, :, :, 1], cmap='gray', vmin=-1,
+               vmax=1, interpolation='none')
+    plt.show()
+    plt.imshow(gasf[32, :, :, 2], cmap='gray', vmin=-1,
+               vmax=1, interpolation='none')
+    plt.show()
+    plt.imshow(gasf[32, :, :, 3], cmap='gray', vmin=-1,
+               vmax=1, interpolation='none')
+    plt.show()
+'''

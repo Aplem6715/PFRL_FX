@@ -6,14 +6,14 @@ import datetime as dt
 from typing import List
 
 import fx_calc
+import processing
 
 STAY = 0
 BUY = 1
 SELL = 2
 CLOSE = 3
 
-TECH_SAFE_START_IDX = 170
-TECH_DATA_WINDOW = 5
+TECH_SAFE_START_IDX = 32
 
 SPREAD = 0.003
 LEVERAGE = 25.0
@@ -76,7 +76,7 @@ class Position():
 
 
 class Broker():
-    def __init__(self, leverage, balance, df, scaler):
+    def __init__(self, leverage, balance, df, gasf):
         # 現ステップでの時刻
         self.now_time = dt.datetime(2000, 1, 1)
         # 現ステップでのClose値
@@ -96,8 +96,7 @@ class Broker():
         # ステップイテレータ
         self.iter = 0
         self.df = df
-        self.data = self.df.values[:, 1:]
-        self.data = scaler.transform(self.data)  # type: np.ndarray
+        self.gasf = gasf
 
         self.volatility_arr = []
         self.setup_volatility_arr(self.df.Close.values.tolist(), 60)
@@ -140,8 +139,8 @@ class Broker():
     def get_volatility(self, delta):
         return self.volatility_arr[self.iter + delta]
 
-    def get_tech_data(self):
-        return self.data[self.iter-TECH_DATA_WINDOW+1:self.iter+1]
+    def get_gasf_data(self):
+        return self.gasf[self.iter]
 
     # 内部状態を更新する（各ステップの最初に必ず呼び出す)
     # return: is_last
@@ -191,23 +190,23 @@ class FxEnv_GASF(gym.Env):
     TEST_MODE = 'test'
     TRAIN_MODE = 'train'
 
-    def __init__(self, tech_df, scaler, mode: str):
-        self.scaler = scaler
-        self.df = tech_df
+    def __init__(self, df, mode: str):
+        self.df = df
+        self.gasf = processing.get_ohlc_culr_gasf(df.loc[:, 'Open':'Close'])
         self.mode = mode
         self.action_hist = [0, 0, 0]
-        self.broker = Broker(LEVERAGE, INIT_BALANCE, tech_df, scaler)
+        self.broker = Broker(LEVERAGE, INIT_BALANCE, self.df, gasf=self.gasf)
 
         self.action_space = gym.spaces.Discrete(4)
-        obs_min = min(-1, self.broker.data.min())
-        obs_max = max(1, self.broker.data.max())
         self.observation_space = gym.spaces.Box(
-            low=obs_min, high=obs_max,
-            shape=(TECH_DATA_WINDOW * self.broker.data.shape[1] + 1,))
+            low=-1, high=1,
+            # w, h, ch
+            shape=(self.gasf.shape[1], self.gasf.shape[2], self.gasf.shape[3]))
         self.reward_range = (-50.0, 50.0)
 
     def reset(self):
-        self.broker = Broker(MARGIN_RATIO, INIT_BALANCE, self.df, self.scaler)
+        self.broker = Broker(MARGIN_RATIO, INIT_BALANCE,
+                             self.df, self.ohlc_gasf, self.culr_gasf)
         for _ in range(TECH_SAFE_START_IDX):
             self.broker.update()
         return self.observe()
@@ -238,14 +237,8 @@ class FxEnv_GASF(gym.Env):
                 self.broker.data) * 100, self.broker.iter, len(self.broker.data), self.broker.balance, self.broker.position_size), end='\r')
 
     def observe(self):
-        tech_data = self.broker.get_tech_data()
-        if self.broker.has_long:
-            position_state = 1.0
-        elif self.broker.has_short:
-            position_state = -1.0
-        else:
-            position_state = 0.0
-        return np.append(tech_data.ravel(), [position_state])
+        gasf = self.broker.get_gasf_data()
+        return gasf
 
     # 利益計算（https://qiita.com/ryo_grid/items/1552d70eb2a8c15f6fd2 参照）
     def calc_rewerd(self):
