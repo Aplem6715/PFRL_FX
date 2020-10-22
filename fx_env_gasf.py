@@ -67,7 +67,7 @@ class Position():
 
     @property
     def pips(self):
-        return price2pips(self.broker.now_price - self.open_price)
+        return price2pips(self.broker.now_price - self.open_price) * (-1 if self.is_short else 1)
 
     def close(self):
         self.close_time = self.broker.now_time
@@ -170,11 +170,13 @@ class Broker():
     # ポジションを確定する
     def close(self, close_long=True, close_short=True):
         pl = 0
+        pips = 0
         for pos in self.positions:
             # Long or Shortの条件に合致するなら
             if (pos.is_long and close_long) or (pos.is_short and close_short):
                 # ポジションを確定して損益を計上
                 pl += pos.close() - SPREAD * pos.size
+                pips += pos.pips
                 self.position_size -= pos.size
                 # 取引履歴に追加
                 if pos.is_long:
@@ -184,6 +186,7 @@ class Broker():
                 # 保持ポジションリストから削除
                 self.positions.remove(pos)
         self.balance += pl
+        return pips
 
 
 class FxEnv_GASF(gym.Env):
@@ -213,21 +216,23 @@ class FxEnv_GASF(gym.Env):
 
     def step(self, action):
         done = self.broker.update()
+        pips = 0
 
         # need_loss_cut = self.broker.need_loss_cut()
         if action == STAY:
             pass
         elif action == CLOSE:
-            self.broker.close()
+            pips = self.broker.close()
         elif action == BUY and not self.broker.has_long:
-            self.broker.close()
+            pips = self.broker.close()
             self.broker.buy()
         elif action == SELL and not self.broker.has_short:
-            self.broker.close()
+            pips = self.broker.close()
             self.broker.sell()
         self.action_hist.append(action2int(action))
 
-        return self.observe(), self.calc_rewerd(), done, {}
+        # return self.observe(), self.calc_rewerd(), done, {}
+        return self.observe(), pips, done, {}
 
     def render(self):
         if self.mode == self.TEST_MODE:
@@ -243,6 +248,7 @@ class FxEnv_GASF(gym.Env):
 
     # 利益計算（https://qiita.com/ryo_grid/items/1552d70eb2a8c15f6fd2 参照）
     def calc_rewerd(self):
+        '''
         # 取引量（１でいいらしい
         mu = 1
         # 取引コスト
@@ -263,6 +269,8 @@ class FxEnv_GASF(gym.Env):
         cost = bp*p1*abs((sigma_tgt/sigma1)*A1 - (sigma_tgt/sigma2)*A2)
 
         return mu*(diff - cost)
+        '''
+        return
 
     def close(self):
         if mode == self.TEST_MODE:

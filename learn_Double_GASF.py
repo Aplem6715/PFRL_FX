@@ -24,9 +24,9 @@ df = pd.read_csv('M30_201001-201912_Tech7.csv', parse_dates=[0])
 scaler = preprocessing.MinMaxScaler()
 scaler.fit(df.iloc[:, 1:])
 
-train_df = df[((df['Datetime'] >= dt.datetime(2017, 12, 20))
+train_df = df[((df['Datetime'] >= dt.datetime(2016, 1, 1))
                & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
-valid_df = df[((df['Datetime'] >= dt.datetime(2018, 12, 20))
+valid_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
                & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
 # 環境の生成
 train_env = fx_env_gasf.FxEnv_GASF(
@@ -63,7 +63,7 @@ agent = pfrl.agents.DoubleDQN(
         q_func.parameters(), lr=0.0001),  # オプティマイザ
     replay_buffer=pfrl.replay_buffers.ReplayBuffer(
         capacity=10 ** 6),  # リプレイバッファ
-    gamma=0.50,  # 将来の報酬割引率
+    gamma=0.75,  # 将来の報酬割引率
     explorer=pfrl.explorers.ConstantEpsilonGreedy(  # 探索(ε-greedy)
         epsilon=0.3, random_action_func=train_env.action_space.sample),
     replay_start_size=1000,  # リプレイ開始サイズ
@@ -74,7 +74,7 @@ agent = pfrl.agents.DoubleDQN(
 )
 
 # エージェントの学習
-n_episodes = 100  # エピソード数
+n_episodes = 500  # エピソード数
 
 
 def train():
