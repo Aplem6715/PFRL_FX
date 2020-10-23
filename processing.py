@@ -85,21 +85,21 @@ def create_ts_with_window(ts2d, window_size):
     return ts_data
 
 
-def get_ohlc_gasf(ohlc_df):
-    ts_data = create_ts_with_window(df.values, 32)
+def get_ohlc_gasf(ohlc_df, nb_candles):
+    ts_data = create_ts_with_window(df.values, nb_candles)
     gasf = get_gasf(ts_data)
     return gasf
 
 
-def get_culr_gasf(ohlc_df):
-    ts_data = create_ts_with_window(df.values, 32)
+def get_culr_gasf(ohlc_df, nb_candles):
+    ts_data = create_ts_with_window(df.values, nb_candles)
     ts_data = ohlc2culr(ts_data)
     gasf = get_gasf(ts_data)
     return gasf
 
 
-def get_ohlc_culr_gasf(ohlc_df):
-    ohlc_data = create_ts_with_window(ohlc_df.values, 32)
+def get_ohlc_culr_gasf(ohlc_df, nb_candles):
+    ohlc_data = create_ts_with_window(ohlc_df.values, nb_candles)
     culr_data = ohlc2culr(ohlc_data)
     print('Creating OHLC GASF')
     ohlc_gasf = get_gasf(ohlc_data)
@@ -124,8 +124,8 @@ if __name__ == '__main__':
     df = df[((df['Datetime'] >= dt.datetime(2017, 12, 1))
              & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
     df = df.loc[:, 'Open': 'Close']
-    ts_data = get_ohlc_culr_gasf(df)
-    plt.imshow(ts_data[32, :, :, 0], cmap='gray', vmin=-1,
+    ts_data = get_ohlc_culr_gasf(df, 16)
+    plt.imshow(ts_data[16, :, :, 0], cmap='gray', vmin=-1,
                vmax=1, interpolation='none')
     plt.show()
     print(ts_data.shape)
