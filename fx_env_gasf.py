@@ -237,7 +237,7 @@ class FxEnv_GASF(gym.Env):
             self.broker.sell()
         self.action_hist.append(action2int(action))
 
-        return self.observe(), self.calc_rewerd(), done, {}
+        return self.observe(), self.calc_rewerd(), done, {'pips': pips}
         # return self.observe(), pips, done, {}
 
     def render(self):
