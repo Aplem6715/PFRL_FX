@@ -23,3 +23,4 @@ results_acer/*
 results_rainbow/*
 reference/*
 atari_acer.py
+*.pt
