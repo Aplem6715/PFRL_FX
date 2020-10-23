@@ -14,12 +14,13 @@ from sklearn import preprocessing
 
 import processing
 
-nb_kernel1 = 16
-nb_kernel2 = 16
-k_size1 = 3
+nb_kernel1 = 8
+nb_kernel2 = 8
+k_size1 = 4
 k_size2 = 3
 k_stride1 = 1
 k_stride2 = 1
+dense_units = 32
 
 df = pd.read_csv('M30_201001-201912_Tech7.csv', parse_dates=[0])
 
@@ -28,8 +29,8 @@ train_df = df[((df['Datetime'] >= dt.datetime(2014, 1, 1))
 valid_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
                & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
 
-gasf = processing.get_ohlc_culr_gasf(train_df.loc[:, 'Open': 'Close'])
-pickle.dump(gasf, open('M30_2014-2018.gasf', 'wb'))
+#gasf = processing.get_ohlc_culr_gasf(train_df.loc[:, 'Open': 'Close'])
+#pickle.dump(gasf, open('M30_2014-2018.gasf', 'wb'))
 #gasf = processing.get_ohlc_culr_gasf(valid_df.loc[:, 'Open': 'Close'])
 #pickle.dump(gasf, open('M30_2018-2019.gasf', 'wb'))
 
@@ -60,9 +61,9 @@ q_func = torch.nn.Sequential(
     torch.nn.ReLU(),
     torch.nn.Flatten(),
     #torch.nn.Conv2d(obs_size, 32, 8, stride=4),
-    torch.nn.Linear(input_size*input_size*nb_kernel2, 128),
+    torch.nn.Linear(input_size*input_size*nb_kernel2, dense_units),
     torch.nn.ReLU(),
-    torch.nn.Linear(128, n_actions),
+    torch.nn.Linear(dense_units, n_actions),
     pfrl.q_functions.DiscreteActionValueHead(),
 )
 
@@ -172,4 +173,4 @@ def train():
 
 
 if __name__ == '__main__':
-    cProfile.run('train()', filename='train.prof')
+    train()
