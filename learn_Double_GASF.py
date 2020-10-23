@@ -15,27 +15,25 @@ from sklearn import preprocessing
 import processing
 
 nb_kernel1 = 16
-nb_kernel2 = 24
+nb_kernel2 = 16
 k_size1 = 8
 k_size2 = 4
 k_stride1 = 2
-k_stride2 = 1
+k_stride2 = 2
 
 df = pd.read_csv('M30_201001-201912_Tech7.csv', parse_dates=[0])
 
-train_df = df[((df['Datetime'] >= dt.datetime(2016, 1, 1))
+train_df = df[((df['Datetime'] >= dt.datetime(2014, 1, 1))
                & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
 valid_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
                & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
 
-'''
 gasf = processing.get_ohlc_culr_gasf(train_df.loc[:, 'Open': 'Close'])
-pickle.dump(gasf, open('M30_2016-2018.gasf', 'wb'))
-gasf = processing.get_ohlc_culr_gasf(valid_df.loc[:, 'Open': 'Close'])
-pickle.dump(gasf, open('M30_2018-2019.gasf', 'wb'))
-'''
+pickle.dump(gasf, open('M30_2014-2018.gasf', 'wb'))
+#gasf = processing.get_ohlc_culr_gasf(valid_df.loc[:, 'Open': 'Close'])
+#pickle.dump(gasf, open('M30_2018-2019.gasf', 'wb'))
 
-train_gasf = pickle.load(open('M30_2016-2018.gasf', 'rb'))
+train_gasf = pickle.load(open('M30_2014-2018.gasf', 'rb'))
 valid_gasf = pickle.load(open('M30_2018-2019.gasf', 'rb'))
 train_gasf = processing.nwhc2nchw_array(train_gasf)
 valid_gasf = processing.nwhc2nchw_array(valid_gasf)
@@ -68,7 +66,7 @@ q_func = torch.nn.Sequential(
     pfrl.q_functions.DiscreteActionValueHead(),
 )
 
-n_episodes = 30  # エピソード数
+n_episodes = 50  # エピソード数
 
 # エージェントの生成
 agent = pfrl.agents.DoubleDQN(
@@ -76,11 +74,11 @@ agent = pfrl.agents.DoubleDQN(
     optimizer=torch.optim.Adam(
         q_func.parameters(), lr=0.0001),  # オプティマイザ
     replay_buffer=pfrl.replay_buffers.ReplayBuffer(
-        capacity=8 ** 5),  # リプレイバッファ 8GB
+        capacity=8 * 10 ** 4),  # リプレイバッファ 8GB
     gamma=0.75,  # 将来の報酬割引率
     explorer=pfrl.explorers.LinearDecayEpsilonGreedy(  # 探索(ε-greedy)
         start_epsilon=0.05, end_epsilon=0.0, decay_steps=(n_episodes-5)*len(train_df), random_action_func=train_env.action_space.sample),
-    replay_start_size=1000,  # リプレイ開始サイズ
+    replay_start_size=10000,  # リプレイ開始サイズ
     update_interval=5,  # 更新インターバル
     target_update_interval=100,  # ターゲット更新インターバル
     phi=lambda x: x.astype(numpy.float32, copy=False),  # 特徴抽出関数
