@@ -16,10 +16,10 @@ import processing
 
 nb_kernel1 = 16
 nb_kernel2 = 16
-k_size1 = 8
-k_size2 = 4
-k_stride1 = 2
-k_stride2 = 2
+k_size1 = 3
+k_size2 = 3
+k_stride1 = 1
+k_stride2 = 1
 
 df = pd.read_csv('M30_201001-201912_Tech7.csv', parse_dates=[0])
 
@@ -75,9 +75,9 @@ agent = pfrl.agents.DoubleDQN(
         q_func.parameters(), lr=0.0001),  # オプティマイザ
     replay_buffer=pfrl.replay_buffers.ReplayBuffer(
         capacity=8 * 10 ** 4),  # リプレイバッファ 8GB
-    gamma=0.75,  # 将来の報酬割引率
+    gamma=0.9,  # 将来の報酬割引率
     explorer=pfrl.explorers.LinearDecayEpsilonGreedy(  # 探索(ε-greedy)
-        start_epsilon=0.05, end_epsilon=0.0, decay_steps=(n_episodes-5)*len(train_df), random_action_func=train_env.action_space.sample),
+        start_epsilon=0.5, end_epsilon=0.0, decay_steps=(n_episodes-5)*len(train_df), random_action_func=train_env.action_space.sample),
     replay_start_size=10000,  # リプレイ開始サイズ
     update_interval=5,  # 更新インターバル
     target_update_interval=100,  # ターゲット更新インターバル
