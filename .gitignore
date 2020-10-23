@@ -24,3 +24,4 @@ results_rainbow/*
 reference/*
 atari_acer.py
 *.pt
+*.gasf
