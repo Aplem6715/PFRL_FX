@@ -24,13 +24,13 @@ dense_units = 32
 
 df = pd.read_csv('M30_201001-201912_Tech7.csv', parse_dates=[0])
 
-train_df = df[((df['Datetime'] >= dt.datetime(2014, 1, 1))
+train_df = df[((df['Datetime'] >= dt.datetime(2010, 1, 1))
                & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
 valid_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
                & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
 
-#gasf = processing.get_ohlc_culr_gasf(train_df.loc[:, 'Open': 'Close'])
-#pickle.dump(gasf, open('M30_2014-2018.gasf', 'wb'))
+gasf = processing.get_ohlc_culr_gasf(train_df.loc[:, 'Open': 'Close'])
+pickle.dump(gasf, open('M30_2010-2018.gasf', 'wb'))
 #gasf = processing.get_ohlc_culr_gasf(valid_df.loc[:, 'Open': 'Close'])
 #pickle.dump(gasf, open('M30_2018-2019.gasf', 'wb'))
 
