@@ -131,6 +131,13 @@ class Broker():
         # return self.balance * RISK_THRESH / pips2price(LOSS_CUT_PIPS)
         return 1000
 
+    @property
+    def unreal_pips(self):
+        pips = 0
+        for pos in self.positions:
+            pips += pos.pips
+        return pips
+
     # 必要証拠金
     @property
     def margin(self):
@@ -193,10 +200,9 @@ class FxEnv_GASF(gym.Env):
     TEST_MODE = 'test'
     TRAIN_MODE = 'train'
 
-    def __init__(self, df, mode: str):
+    def __init__(self, df, gasf, mode: str):
         self.df = df
-        self.gasf = processing.get_ohlc_culr_gasf(df.loc[:, 'Open': 'Close'])
-        self.gasf = processing.nwhc2nchw_array(self.gasf)
+        self.gasf = gasf
         self.mode = mode
         self.action_hist = [0, 0, 0]
         self.broker = Broker(LEVERAGE, INIT_BALANCE, self.df, self.gasf)
@@ -205,7 +211,7 @@ class FxEnv_GASF(gym.Env):
         self.observation_space = gym.spaces.Box(
             low=-1, high=1,
             # ch, h, w
-            shape=(self.gasf.shape[1], self.gasf.shape[2], self.gasf.shape[3], ))
+            shape=(self.gasf.shape[1]+2, self.gasf.shape[2], self.gasf.shape[3], ))
         self.reward_range = (-50.0, 50.0)
 
     def reset(self):
@@ -231,8 +237,8 @@ class FxEnv_GASF(gym.Env):
             self.broker.sell()
         self.action_hist.append(action2int(action))
 
-        # return self.observe(), self.calc_rewerd(), done, {}
-        return self.observe(), pips, done, {}
+        return self.observe(), self.calc_rewerd(), done, {}
+        # return self.observe(), pips, done, {}
 
     def render(self):
         if self.mode == self.TEST_MODE:
@@ -243,12 +249,19 @@ class FxEnv_GASF(gym.Env):
 
     def observe(self):
         gasf = self.broker.get_gasf_data()
-        #gasf = gasf.reshape((1, ) + gasf.shape)
-        return gasf
+        shape = (1, gasf.shape[1], gasf.shape[2])
+        pos = 0.0
+        if self.broker.has_long:
+            pos = 1.0
+        elif self.broker.has_short:
+            pos = -1.0
+        pos_arry = np.full(shape, pos)
+        pips_arry = np.full(shape, self.broker.unreal_pips/50)
+        obs = np.concatenate([gasf, pos_arry, pips_arry], axis=0)
+        return obs
 
     # 利益計算（https://qiita.com/ryo_grid/items/1552d70eb2a8c15f6fd2 参照）
     def calc_rewerd(self):
-        '''
         # 取引量（１でいいらしい
         mu = 1
         # 取引コスト
@@ -269,8 +282,6 @@ class FxEnv_GASF(gym.Env):
         cost = bp*p1*abs((sigma_tgt/sigma1)*A1 - (sigma_tgt/sigma2)*A2)
 
         return mu*(diff - cost)
-        '''
-        return
 
     def close(self):
         if mode == self.TEST_MODE:
