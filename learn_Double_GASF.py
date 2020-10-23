@@ -9,30 +9,42 @@ import pandas as pd
 import datetime as dt
 import cProfile
 import pprint
+import pickle
 from sklearn import preprocessing
 
+import processing
 
 nb_kernel1 = 16
-nb_kernel2 = 16
-k_size1 = 4
+nb_kernel2 = 24
+k_size1 = 8
 k_size2 = 4
 k_stride1 = 2
 k_stride2 = 1
 
 df = pd.read_csv('M30_201001-201912_Tech7.csv', parse_dates=[0])
 
-scaler = preprocessing.MinMaxScaler()
-scaler.fit(df.iloc[:, 1:])
-
 train_df = df[((df['Datetime'] >= dt.datetime(2016, 1, 1))
                & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
 valid_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
                & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
+
+'''
+gasf = processing.get_ohlc_culr_gasf(train_df.loc[:, 'Open': 'Close'])
+pickle.dump(gasf, open('M30_2016-2018.gasf', 'wb'))
+gasf = processing.get_ohlc_culr_gasf(valid_df.loc[:, 'Open': 'Close'])
+pickle.dump(gasf, open('M30_2018-2019.gasf', 'wb'))
+'''
+
+train_gasf = pickle.load(open('M30_2016-2018.gasf', 'rb'))
+valid_gasf = pickle.load(open('M30_2018-2019.gasf', 'rb'))
+train_gasf = processing.nwhc2nchw_array(train_gasf)
+valid_gasf = processing.nwhc2nchw_array(valid_gasf)
+
 # 環境の生成
 train_env = fx_env_gasf.FxEnv_GASF(
-    train_df, fx_env_gasf.FxEnv_GASF.TRAIN_MODE)
+    train_df, train_gasf, fx_env_gasf.FxEnv_GASF.TRAIN_MODE)
 valid_env = fx_env_gasf.FxEnv_GASF(
-    valid_df, fx_env_gasf.FxEnv_GASF.TEST_MODE)
+    valid_df, valid_gasf, fx_env_gasf.FxEnv_GASF.TEST_MODE)
 
 # Q関数の定義
 obs_shape = train_env.observation_space.low.shape
@@ -56,16 +68,18 @@ q_func = torch.nn.Sequential(
     pfrl.q_functions.DiscreteActionValueHead(),
 )
 
+n_episodes = 30  # エピソード数
+
 # エージェントの生成
 agent = pfrl.agents.DoubleDQN(
     q_func,  # Q関数
     optimizer=torch.optim.Adam(
         q_func.parameters(), lr=0.0001),  # オプティマイザ
     replay_buffer=pfrl.replay_buffers.ReplayBuffer(
-        capacity=10 ** 6),  # リプレイバッファ
+        capacity=8 ** 5),  # リプレイバッファ 8GB
     gamma=0.75,  # 将来の報酬割引率
-    explorer=pfrl.explorers.ConstantEpsilonGreedy(  # 探索(ε-greedy)
-        epsilon=0.3, random_action_func=train_env.action_space.sample),
+    explorer=pfrl.explorers.LinearDecayEpsilonGreedy(  # 探索(ε-greedy)
+        start_epsilon=0.05, end_epsilon=0.0, decay_steps=(n_episodes-5)*len(train_df), random_action_func=train_env.action_space.sample),
     replay_start_size=1000,  # リプレイ開始サイズ
     update_interval=5,  # 更新インターバル
     target_update_interval=100,  # ターゲット更新インターバル
@@ -74,10 +88,10 @@ agent = pfrl.agents.DoubleDQN(
 )
 
 # エージェントの学習
-n_episodes = 500  # エピソード数
 
 
 def train():
+    max_score = -1000000
     # エピソードの反復
     for i in range(1, n_episodes + 1):
         # 環境のリセット
@@ -141,6 +155,9 @@ def train():
                     # エピソード完了
                     if done:
                         break
+                if R > max_score:
+                    max_score = R
+                    agent.save('agent_double_best{}'.format(int(max_score)))
                 print('R:{:.1f}\tnb_trade:{}\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}                                           '
                       .format(
                           R,
@@ -153,7 +170,7 @@ def train():
                       )
     print('Finished.')
 
-    agent.save('agent_double')
+    agent.save('agent_double_last{}'.format(int(max_score)))
 
 
 if __name__ == '__main__':
