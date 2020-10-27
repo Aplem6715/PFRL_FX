@@ -10,9 +10,11 @@ import pickle
 import numpy as np
 import pandas as pd
 import datetime as dt
-import fx_env_gasf
-
 from sklearn import preprocessing
+
+
+import fx_env_gasf_concat
+
 
 import pfrl
 from pfrl.experiments.evaluator import Evaluator
@@ -29,17 +31,20 @@ from pfrl import replay_buffers
 from pfrl.wrappers import atari_wrappers
 
 import processing
+from tqdm import tqdm
 
+linear_features = ['position', 'pips']
 
-nb_kernel1 = 32
-nb_kernel2 = 64
-nb_kernel3 = 64
-k_size1 = 8
-k_size2 = 4
-k_size3 = 3
+nb_kernel1 = 16
+nb_kernel2 = 16
+# nb_kernel3 = 64
+k_size1 = 4
+k_size2 = 2
+# k_size3 = 3
 k_stride1 = 2
-k_stride2 = 2
-k_stride3 = 1
+k_stride2 = 1
+# k_stride3 = 1
+dense_units = 256
 
 
 def train_agent(
@@ -71,7 +76,8 @@ def train_agent(
     episode_len = 0
     try:
         while t < steps:
-
+            if t % 200 == 0:
+                print('step: ', t, '/', steps, end='\r')
             # a_t
             action = agent.act(obs)
             # o_{t+1}, r_{t+1}
@@ -239,31 +245,35 @@ class MyDistributionalDuelingDQN(nn.Module, StateQFunction):
                 nn.Conv2d(n_input_channels, nb_kernel1,
                           k_size1, stride=k_stride1),
                 nn.Conv2d(nb_kernel1, nb_kernel2, k_size2, stride=k_stride2),
-                nn.Conv2d(nb_kernel2, nb_kernel3, k_size3, stride=k_stride3),
+                # nn.Conv2d(nb_kernel2, nb_kernel3, k_size3, stride=k_stride3),
             ]
         )
         input_size = int((input_width - k_size1) / k_stride1) + 1
         input_size = int((input_size - k_size2) / k_stride2) + 1
-        input_size = int((input_size - k_size3) / k_stride3) + 1
-        input_size = input_size ** 2 * nb_kernel3
+        input_size = input_size ** 2 * nb_kernel2
 
-        self.main_stream = nn.Linear(input_size, 1024)
-        self.a_stream = nn.Linear(512, n_actions * n_atoms)
-        self.v_stream = nn.Linear(512, n_atoms)
+        self.main_stream = nn.Linear(
+            input_size + len(linear_features), dense_units)
+        self.a_stream = nn.Linear(dense_units//2, n_actions * n_atoms)
+        self.v_stream = nn.Linear(dense_units//2, n_atoms)
 
         self.apply(init_chainer_default)
         self.conv_layers.apply(constant_bias_initializer(bias=bias))
 
     def forward(self, x):
-        h = x
+        # split gasf, linear_features
+        h, linear = x[0], x[1]
         for l in self.conv_layers:
             h = self.activation(l(h))
 
         # Advantage
-        batch_size = x.shape[0]
+        batch_size = h.shape[0]
+        # Flatten
+        h = h.view(batch_size, -1)
+        fc_in = torch.cat([h, linear], dim=1)
 
-        h = self.activation(self.main_stream(h.view(batch_size, -1)))
-        h_a, h_v = torch.chunk(h, 2, dim=1)
+        fc_in = self.activation(self.main_stream(fc_in))
+        h_a, h_v = torch.chunk(fc_in, 2, dim=1)
         ya = self.a_stream(h_a).reshape(
             (batch_size, self.n_actions, self.n_atoms))
 
@@ -277,20 +287,20 @@ class MyDistributionalDuelingDQN(nn.Module, StateQFunction):
         ya, ys = torch.broadcast_tensors(ya, ys)
         q = F.softmax(ya + ys, dim=2)
 
-        self.z_values = self.z_values.to(x.device)
+        self.z_values = self.z_values.to(h.device)
         return action_value.DistributionalDiscreteActionValue(q, self.z_values)
 
 
 def main():
     df = pd.read_csv('M30_201001-201912_Tech7.csv', parse_dates=[0])
 
-    train_df = df[((df['Datetime'] >= dt.datetime(2014, 1, 1))
+    train_df = df[((df['Datetime'] >= dt.datetime(2010, 1, 1))
                    & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
     valid_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
                    & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
 
-    train_gasf = pickle.load(open('M30_2014-2018.gasf', 'rb'))
-    valid_gasf = pickle.load(open('M30_2018-2019.gasf', 'rb'))
+    train_gasf = pickle.load(open('M30_2010-2018_16candle.gasf', 'rb'))
+    valid_gasf = pickle.load(open('M30_2018-2019_16candle.gasf', 'rb'))
     train_gasf = processing.nwhc2nchw_array(train_gasf)
     valid_gasf = processing.nwhc2nchw_array(valid_gasf)
     # 環境の生成
@@ -309,7 +319,7 @@ def main():
     )
     parser.add_argument("--seed", type=int, default=0,
                         help="Random seed [0, 2 ** 31)")
-    parser.add_argument("--gpu", type=int, default=-1)
+    parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument("--demo", action="store_true", default=False)
 
     parser.add_argument("--eval-epsilon", type=float, default=0.0)
@@ -318,7 +328,7 @@ def main():
 
     parser.add_argument("--replay-start-size", type=int, default=10 ** 4)
     parser.add_argument("--eval-n-steps", type=int, default=125000)
-    parser.add_argument("--eval-interval", type=int, default=250000)
+    parser.add_argument("--eval-interval", type=int, default=500000)
     parser.add_argument(
         "--log-level",
         type=int,
@@ -357,22 +367,28 @@ def main():
     print("Output files are saved in {}".format(args.outdir))
 
     def make_env(test):
+        '''
         if test:
             return fx_env_gasf.FxEnv_GASF(valid_df, valid_gasf, mode=fx_env_gasf.FxEnv_GASF.TEST_MODE)
         else:
             return fx_env_gasf.FxEnv_GASF(train_df, train_gasf, mode=fx_env_gasf.FxEnv_GASF.TRAIN_MODE)
+        '''
+        if test:
+            return fx_env_gasf_concat.FxEnv_GASF(valid_df, valid_gasf, mode=fx_env_gasf_concat.FxEnv_GASF.TEST_MODE)
+        else:
+            return fx_env_gasf_concat.FxEnv_GASF(train_df, train_gasf, mode=fx_env_gasf_concat.FxEnv_GASF.TRAIN_MODE)
 
     env = make_env(test=False)
     eval_env = make_env(test=True)
 
     obs_shape = env.observation_space.low.shape
     n_actions = env.action_space.n
-    obs_ch = obs_shape[0]
-    obs_width = obs_shape[1]
+    obs_ch = obs_shape[1]
+    obs_width = obs_shape[2]
 
     n_atoms = 51
-    v_max = 50
-    v_min = -50
+    v_max = 10
+    v_min = -10
     # 128ユニット3層のDeep Q関数
     q_func = MyDistributionalDuelingDQN(
         n_actions, n_atoms, v_min, v_max, input_width=obs_width, n_input_channels=obs_ch)
@@ -398,9 +414,11 @@ def main():
         normalize_by_max="memory",
     )
 
+    '''
     def phi(x):
         # Feature extractor
         return np.asarray(x, dtype=np.float32) / 255
+    '''
 
     Agent = agents.CategoricalDoubleDQN
     agent = Agent(
@@ -408,14 +426,13 @@ def main():
         opt,
         rbuf,
         gpu=args.gpu,
-        gamma=0.75,
+        gamma=0.9,
         explorer=explorer,
         minibatch_size=32,
         replay_start_size=args.replay_start_size,
         target_update_interval=3200,
         update_interval=update_interval,
         batch_accumulator="mean",
-        phi=phi,
     )
 
     if args.demo:

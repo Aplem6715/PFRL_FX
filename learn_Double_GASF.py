@@ -29,10 +29,10 @@ train_df = df[((df['Datetime'] >= dt.datetime(2010, 1, 1))
 valid_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
                & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
 
-gasf = processing.get_ohlc_culr_gasf(train_df.loc[:, 'Open': 'Close'])
-pickle.dump(gasf, open('M30_2010-2018.gasf', 'wb'))
-#gasf = processing.get_ohlc_culr_gasf(valid_df.loc[:, 'Open': 'Close'])
-#pickle.dump(gasf, open('M30_2018-2019.gasf', 'wb'))
+gasf = processing.get_ohlc_culr_gasf(train_df.loc[:, 'Open': 'Close'], 16)
+pickle.dump(gasf, open('M30_2010-2018_16candle.gasf', 'wb'))
+gasf = processing.get_ohlc_culr_gasf(valid_df.loc[:, 'Open': 'Close'], 16)
+pickle.dump(gasf, open('M30_2018-2019_16candle.gasf', 'wb'))
 
 train_gasf = pickle.load(open('M30_2014-2018.gasf', 'rb'))
 valid_gasf = pickle.load(open('M30_2018-2019.gasf', 'rb'))

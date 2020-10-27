@@ -96,7 +96,7 @@ class Broker():
         # ステップイテレータ
         self.iter = 0
         self.df = df
-        self.gasf = gasf
+        self.gasf = gasf.astype(np.float32)
 
         self.volatility_arr = []
         self.setup_volatility_arr(self.df.Close.values.tolist(), 60)
@@ -210,8 +210,8 @@ class FxEnv_GASF(gym.Env):
         self.action_space = gym.spaces.Discrete(4)
         self.observation_space = gym.spaces.Box(
             low=-1, high=1,
-            # ch, h, w
-            shape=(self.gasf.shape[1]+2, self.gasf.shape[2], self.gasf.shape[3], ))
+            # gasf+pos+pipsで3, ch, h, w
+            shape=(2, self.gasf.shape[1], self.gasf.shape[2], self.gasf.shape[3], ))
         self.reward_range = (-50.0, 50.0)
 
     def reset(self):
@@ -237,8 +237,8 @@ class FxEnv_GASF(gym.Env):
             self.broker.sell()
         self.action_hist.append(action2int(action))
 
-        # return self.observe(), self.calc_rewerd(), done, {'pips': pips}
-        return self.observe(), pips, done, {}
+        return self.observe(), self.calc_rewerd(), done, {'pips': pips}
+        # return self.observe(), pips, done, {}
 
     def render(self):
         if self.mode == self.TEST_MODE:
@@ -249,15 +249,17 @@ class FxEnv_GASF(gym.Env):
 
     def observe(self):
         gasf = self.broker.get_gasf_data()
-        shape = (1, gasf.shape[1], gasf.shape[2])
+        # shape = (1, gasf.shape[1], gasf.shape[2])
         pos = 0.0
         if self.broker.has_long:
             pos = 1.0
         elif self.broker.has_short:
             pos = -1.0
-        pos_arry = np.full(shape, pos)
-        pips_arry = np.full(shape, self.broker.unreal_pips/50)
-        obs = np.concatenate([gasf, pos_arry, pips_arry], axis=0)
+        # pos_arry = np.full(shape, pos)
+        # pips_arry = np.full(shape, self.broker.unreal_pips/50)
+        # np.concatenate([gasf, pos_arry, pips_arry], axis=0)
+        linears = np.array([pos, self.broker.unreal_pips/50], dtype=np.float32)
+        obs = [gasf, linears]
         return obs
 
     # 利益計算（https://qiita.com/ryo_grid/items/1552d70eb2a8c15f6fd2 参照）
