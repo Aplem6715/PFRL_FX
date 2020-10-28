@@ -324,6 +324,15 @@ def main():
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument("--demo", action="store_true", default=False)
 
+    # Greedy Setting
+    parser.add_argument("--start-epsilon", type=float, default=0.2)
+    parser.add_argument("--end-epsilon", type=float, default=0.0)
+    parser.add_argument("--greedy-steps", type=int,
+                        default=(5 * 10 ** 6) // 4)
+
+    # Agent Settings
+    parser.add_argument("--gamma", type=float, default=0.9)
+
     parser.add_argument("--eval-epsilon", type=float, default=0.0)
     parser.add_argument("--noisy-net-sigma", type=float, default=0.5)
     parser.add_argument("--steps", type=int, default=5 * 10 ** 6)
@@ -396,9 +405,10 @@ def main():
         n_actions, n_atoms, v_min, v_max, input_width=obs_width, n_input_channels=obs_ch)
 
     # Noisy nets
-    pnn.to_factorized_noisy(q_func, sigma_scale=args.noisy_net_sigma)
+    # pnn.to_factorized_noisy(q_func, sigma_scale=args.noisy_net_sigma)
     # Turn off explorer
-    explorer = explorers.Greedy()
+    explorer = explorers.LinearDecayEpsilonGreedy(
+        args.start_epsilon, args.end_epsilon, args.greedy_steps, env.action_space.sample)
 
     # Use the same hyper parameters as https://arxiv.org/abs/1710.02298
     opt = torch.optim.Adam(q_func.parameters(), 6.25e-5, eps=1.5 * 10 ** -4)
@@ -428,7 +438,7 @@ def main():
         opt,
         rbuf,
         gpu=args.gpu,
-        gamma=0.9,
+        gamma=args.gamma,
         explorer=explorer,
         minibatch_size=32,
         replay_start_size=args.replay_start_size,
