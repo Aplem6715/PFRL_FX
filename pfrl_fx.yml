@@ -45,11 +45,31 @@ dependencies:
   - zlib=1.2.11=h62dcd97_4
   - zstd=1.4.5=h04227a9_0
   - pip:
+    - atari-py==0.2.6
+    - chardet==3.0.4
     - cloudpickle==1.6.0
+    - cycler==0.10.0
     - future==0.18.2
     - gym==0.17.3
+    - idna==2.10
+    - joblib==0.17.0
+    - kiwisolver==1.2.0
+    - matplotlib==3.3.2
+    - oandapyv20==0.6.3
+    - opencv-python==4.4.0.44
+    - pathlib2==2.3.5
     - pfrl==0.1.0
     - pyglet==1.5.0
+    - pyparsing==2.4.7
+    - requests==2.24.0
+    - scikit-learn==0.23.2
     - scipy==1.5.2
-prefix: C:\Users\Daichi\Anaconda3\envs\pfrl_fx
-
+    - snakeviz==2.1.0
+    - squaremap==1.0.5
+    - ta-lib==0.4.19
+    - threadpoolctl==2.1.0
+    - tornado==6.0.4
+    - tqdm==4.50.2
+    - urllib3==1.25.10
+    - wxpython==4.1.0
+prefix: X:\ProgramFiles\Anaconda3\envs\pfrl_fx

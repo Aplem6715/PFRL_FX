@@ -303,6 +303,8 @@ def main():
     valid_gasf = pickle.load(open('M30_2018-2019_16candle.gasf', 'rb'))
     train_gasf = processing.nwhc2nchw_array(train_gasf)
     valid_gasf = processing.nwhc2nchw_array(valid_gasf)
+    train_gasf = train_gasf.astype(np.float32)
+    valid_gasf = valid_gasf.astype(np.float32)
     # 環境の生成
     #train_env = fx_env.FxEnv(train_df, scaler)
     #valid_env = fx_env.FxEnv(valid_df, scaler)

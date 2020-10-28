@@ -13,11 +13,13 @@ BUY = 1
 SELL = 2
 CLOSE = 3
 
-TECH_SAFE_START_IDX = 170
+TECH_SAFE_START_IDX = 20
 
+# スプレッド（円）
 SPREAD = 0.003
 LEVERAGE = 25.0
-MARGIN_RATIO = 1.0/LEVERAGE
+MARGIN_RATIO = 1.0 / LEVERAGE
+# 初期残高（円
 INIT_BALANCE = 100000.0
 PRICE_TO_PIPS = 100
 PIPS_TO_PRICE = 0.01
@@ -96,10 +98,10 @@ class Broker():
         # ステップイテレータ
         self.iter = 0
         self.df = df
-        self.gasf = gasf.astype(np.float32)
+        self.gasf = gasf
 
-        self.volatility_arr = []
-        self.setup_volatility_arr(self.df.Close.values.tolist(), 60)
+        # self.volatility_arr = []
+        # self.setup_volatility_arr(self.df.Close.values.tolist(), 60)
 
     def setup_volatility_arr(self, rate_arr, window_size):
         local_window_size = window_size
@@ -119,7 +121,7 @@ class Broker():
     @property
     def has_short(self):
         return len(self.positions) > 0 and self.positions[0].is_short
-
+ 
     # 最大損失許容量
     @property
     def max_allowable_loss(self):
@@ -138,10 +140,10 @@ class Broker():
             pips += pos.pips
         return pips
 
-    # 必要証拠金
+    # 必要証拠金(円)
     @property
     def margin(self):
-        return self.position_size * MARGIN_RATIO
+        return self.position_size * MARGIN_RATIO * self.now_price
 
     def get_volatility(self, delta):
         return self.volatility_arr[self.iter + delta]
@@ -152,10 +154,10 @@ class Broker():
     # 内部状態を更新する（各ステップの最初に必ず呼び出す)
     # return: is_last
     def update(self):
+        self.iter += 1
         self.prev_price = self.now_price
         self.now_price = self.df.Close.iloc[self.iter]
         self.now_time = self.df.Datetime.iloc[self.iter]
-        self.iter += 1
         return self.iter >= len(self.df)-1 or self.balance <= 0
 
     # ロスカットが必要かどうか
@@ -221,7 +223,6 @@ class FxEnv_GASF(gym.Env):
         return self.observe()
 
     def step(self, action):
-        done = self.broker.update()
         pips = 0
 
         # need_loss_cut = self.broker.need_loss_cut()
@@ -237,7 +238,12 @@ class FxEnv_GASF(gym.Env):
             self.broker.sell()
         self.action_hist.append(action2int(action))
 
-        return self.observe(), self.calc_rewerd(), done, {'pips': pips}
+        # 更新前に報酬を計算
+        reward = self.calc_rewerd()
+        # 時間を経過させる
+        done = self.broker.update()
+
+        return self.observe(), reward, done, {'pips': pips}
         # return self.observe(), pips, done, {}
 
     def render(self):
@@ -267,21 +273,23 @@ class FxEnv_GASF(gym.Env):
         # 取引量（１でいいらしい
         mu = 1
         # 取引コスト
-        bp = 0.000015
+        bp = 0.0015
         # アクション履歴(idx=-1は今回(t)のアクション, (t-1)のアクションはidx=-2)
         A1 = self.action_hist[-2]
         A2 = self.action_hist[-3]
+        '''
         # ボラティリティ
         sigma1 = self.broker.get_volatility(-1)
         sigma2 = self.broker.get_volatility(-2)
         # 定数でいい？計算式がわからん
         sigma_tgt = VOLATILITY_TGT
+        '''
         # 価格履歴
         p1 = self.broker.prev_price
         rt = self.broker.now_price - self.broker.prev_price
 
-        diff = A1*(sigma_tgt/sigma1)*rt
-        cost = bp*p1*abs((sigma_tgt/sigma1)*A1 - (sigma_tgt/sigma2)*A2)
+        diff = A1*rt
+        cost = bp*abs(A1 - A2)
 
         return mu*(diff - cost)
 
