@@ -24,6 +24,9 @@ INIT_BALANCE = 100000.0
 PRICE_TO_PIPS = 100
 PIPS_TO_PRICE = 0.01
 
+
+REWERD_MAX_PIPS = 100
+
 RISK_THRESH = 0.02
 LOSS_CUT_PIPS = 20
 
@@ -84,6 +87,7 @@ class Broker():
         # 現ステップでのClose値
         self.now_price = 0
         self.prev_price = 0
+        self.prev_pl_pips = 0
 
         # 残高
         self.balance = balance
@@ -121,7 +125,7 @@ class Broker():
     @property
     def has_short(self):
         return len(self.positions) > 0 and self.positions[0].is_short
- 
+
     # 最大損失許容量
     @property
     def max_allowable_loss(self):
@@ -154,6 +158,8 @@ class Broker():
     # 内部状態を更新する（各ステップの最初に必ず呼び出す)
     # return: is_last
     def update(self):
+        self.prev_pl_pips = self.unreal_pips
+
         self.iter += 1
         self.prev_price = self.now_price
         self.now_price = self.df.Close.iloc[self.iter]
@@ -238,10 +244,10 @@ class FxEnv_GASF(gym.Env):
             self.broker.sell()
         self.action_hist.append(action2int(action))
 
-        # 更新前に報酬を計算
-        reward = self.calc_rewerd()
         # 時間を経過させる
         done = self.broker.update()
+        # 報酬を計算
+        reward = self.calc_rewerd2(action)
 
         return self.observe(), reward, done, {'pips': pips}
         # return self.observe(), pips, done, {}
@@ -291,7 +297,17 @@ class FxEnv_GASF(gym.Env):
         diff = A1*rt
         cost = bp*abs(A1 - A2)
 
-        return mu*(diff - cost)
+        return mu * (diff - cost)
+
+    def calc_rewerd2(self, act):
+        rewerd = 0
+        if act == BUY or act == SELL or act == STAY:
+            ret = self.broker.unreal_pips - self.broker.prev_pl_pips
+            rewerd = np.sign(ret) * min(abs(ret / REWERD_MAX_PIPS), 1)
+        elif act == CLOSE:
+            rewerd = np.sign(self.broker.prev_pl_pips) * \
+                min(abs(self.broker.prev_pl_pips / REWERD_MAX_PIPS), 1)
+        return rewerd
 
     def close(self):
         if mode == self.TEST_MODE:

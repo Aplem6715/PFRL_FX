@@ -44,7 +44,7 @@ k_size2 = 2
 k_stride1 = 2
 k_stride2 = 1
 # k_stride3 = 1
-dense_units = 256
+dense_units = [64, 64]
 
 
 def train_agent(
@@ -252,10 +252,14 @@ class MyDistributionalDuelingDQN(nn.Module, StateQFunction):
         input_size = int((input_size - k_size2) / k_stride2) + 1
         input_size = input_size ** 2 * nb_kernel2
 
-        self.main_stream = nn.Linear(
-            input_size + len(linear_features), dense_units)
-        self.a_stream = nn.Linear(dense_units//2, n_actions * n_atoms)
-        self.v_stream = nn.Linear(dense_units//2, n_atoms)
+        self.main_stream = nn.ModuleList(
+            [
+                nn.Linear(input_size + len(linear_features), dense_units[0]),
+                nn.Linear(dense_units[0], dense_units[1]),
+            ]
+        )
+        self.a_stream = nn.Linear(dense_units[1]//2, n_actions * n_atoms)
+        self.v_stream = nn.Linear(dense_units[1]//2, n_atoms)
 
         self.apply(init_chainer_default)
         self.conv_layers.apply(constant_bias_initializer(bias=bias))
@@ -272,7 +276,9 @@ class MyDistributionalDuelingDQN(nn.Module, StateQFunction):
         h = h.view(batch_size, -1)
         fc_in = torch.cat([h, linear], dim=1)
 
-        fc_in = self.activation(self.main_stream(fc_in))
+        for l in self.main_stream:
+            fc_in = self.activation(l(fc_in))
+
         h_a, h_v = torch.chunk(fc_in, 2, dim=1)
         ya = self.a_stream(h_a).reshape(
             (batch_size, self.n_actions, self.n_atoms))
