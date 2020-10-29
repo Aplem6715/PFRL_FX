@@ -20,11 +20,11 @@ linear_features = ['position', 'pips']
 
 nb_kernel1 = 8
 nb_kernel2 = 16
-k_size1 = 6
+k_size1 = 4
 k_size2 = 2
 k_stride1 = 2
 k_stride2 = 1
-dense_units = [16, 16]
+dense_units = [62, 32]
 
 
 class Q_Func(torch.nn.Module):
@@ -135,7 +135,7 @@ agent = pfrl.agents.DoubleDQN(
         q_func.parameters(), lr=0.0001),  # オプティマイザ
     replay_buffer=pfrl.replay_buffers.ReplayBuffer(
         capacity=8 * 10 ** 4),  # リプレイバッファ 8GB
-    gamma=0.9,  # 将来の報酬割引率
+    gamma=0.5,  # 将来の報酬割引率
     explorer=pfrl.explorers.LinearDecayEpsilonGreedy(  # 探索(ε-greedy)
         start_epsilon=0.5, end_epsilon=0.0, decay_steps=(n_episodes-10)*len(train_df), random_action_func=train_env.action_space.sample),
     replay_start_size=10000,  # リプレイ開始サイズ

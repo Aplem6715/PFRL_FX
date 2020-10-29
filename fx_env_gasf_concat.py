@@ -270,7 +270,7 @@ class FxEnv_GASF(gym.Env):
         # pos_arry = np.full(shape, pos)
         # pips_arry = np.full(shape, self.broker.unreal_pips/50)
         # np.concatenate([gasf, pos_arry, pips_arry], axis=0)
-        linears = np.array([pos, self.broker.unreal_pips/50], dtype=np.float32)
+        linears = np.array([pos, 0], dtype=np.float32)
         obs = [gasf, linears]
         return obs
 
