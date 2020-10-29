@@ -247,7 +247,7 @@ class FxEnv_GASF(gym.Env):
         # 時間を経過させる
         done = self.broker.update()
         # 報酬を計算
-        reward = self.calc_rewerd2(action)
+        reward = self.calc_rewerd2(action, pips)
 
         return self.observe(), reward, done, {'pips': pips}
         # return self.observe(), pips, done, {}
@@ -299,14 +299,17 @@ class FxEnv_GASF(gym.Env):
 
         return mu * (diff - cost)
 
-    def calc_rewerd2(self, act):
+    def calc_rewerd2(self, act, realized_pips):
         rewerd = 0
-        if act == BUY or act == SELL or act == STAY:
+        #
+        if realized_pips != 0:
+            # BUY-SELL or SELL-BUY or CLOSE
+            rewerd = np.sign(realized_pips) * \
+                min(abs(realized_pips / REWERD_MAX_PIPS), 1)
+        # BUY-BUY or SELL-SELL or CLOSE-CLOSE or STAY
+        elif self.action_hist[-1] == self.action_hist[-2] or act == STAY:
             ret = self.broker.unreal_pips - self.broker.prev_pl_pips
             rewerd = np.sign(ret) * min(abs(ret / REWERD_MAX_PIPS), 1)
-        elif act == CLOSE:
-            rewerd = np.sign(self.broker.prev_pl_pips) * \
-                min(abs(self.broker.prev_pl_pips / REWERD_MAX_PIPS), 1)
         return rewerd
 
     def close(self):
