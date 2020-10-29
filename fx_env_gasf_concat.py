@@ -220,7 +220,7 @@ class FxEnv_GASF(gym.Env):
             low=-1, high=1,
             # gasf+pos+pipsで3, ch, h, w
             shape=(2, self.gasf.shape[1], self.gasf.shape[2], self.gasf.shape[3], ))
-        self.reward_range = (-50.0, 50.0)
+        self.reward_range = (-1.0, 1.0)
 
     def reset(self):
         self.broker = Broker(MARGIN_RATIO, INIT_BALANCE, self.df, self.gasf)

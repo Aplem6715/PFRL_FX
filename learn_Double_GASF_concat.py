@@ -19,12 +19,12 @@ import processing
 linear_features = ['position', 'pips']
 
 nb_kernel1 = 8
-nb_kernel2 = 16
+#nb_kernel2 = 16
 k_size1 = 4
-k_size2 = 2
-k_stride1 = 2
-k_stride2 = 1
-dense_units = [62, 32]
+#k_size2 = 2
+k_stride1 = 1
+#k_stride2 = 1
+dense_units = [30, 32]
 
 
 class Q_Func(torch.nn.Module):
@@ -45,13 +45,14 @@ class Q_Func(torch.nn.Module):
             [
                 nn.Conv2d(n_input_channels, nb_kernel1,
                           k_size1, stride=k_stride1),
-                nn.Conv2d(nb_kernel1, nb_kernel2, k_size2, stride=k_stride2),
+                # nn.Conv2d(nb_kernel1, nb_kernel2, k_size2, stride=k_stride2),
                 # nn.Conv2d(nb_kernel2, nb_kernel3, k_size3, stride=k_stride3),
             ]
         )
+        #input_size = int((input_width - k_size1) / k_stride1) + 1
+        #input_size = int((input_size - k_size2) / k_stride2) + 1
         input_size = int((input_width - k_size1) / k_stride1) + 1
-        input_size = int((input_size - k_size2) / k_stride2) + 1
-        input_size = input_size ** 2 * nb_kernel2
+        input_size = input_size ** 2 * nb_kernel1
 
         self.fc_layers = nn.ModuleList(
             [
@@ -79,19 +80,19 @@ class Q_Func(torch.nn.Module):
 
 df = pd.read_csv('M30_201001-201912_Tech7.csv', parse_dates=[0])
 
-train_df = df[((df['Datetime'] >= dt.datetime(2010, 1, 1))
+train_df = df[((df['Datetime'] >= dt.datetime(2015, 1, 1))
                & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
 valid_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
                & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
 
-'''
-gasf = processing.get_ohlc_culr_gasf(train_df.loc[:, 'Open': 'Close'], 16)
-pickle.dump(gasf, open('M30_2010-2018_16candle.gasf', 'wb'))
-gasf = processing.get_ohlc_culr_gasf(valid_df.loc[:, 'Open': 'Close'], 16)
-pickle.dump(gasf, open('M30_2018-2019_16candle.gasf', 'wb'))
-'''
 
-train_gasf = pickle.load(open('M30_2010-2018_16candle.gasf', 'rb'))
+gasf = processing.get_ohlc_culr_gasf(train_df.loc[:, 'Open': 'Close'], 16)
+pickle.dump(gasf, open('M30_2015-2018_16candle.gasf', 'wb'))
+#gasf = processing.get_ohlc_culr_gasf(valid_df.loc[:, 'Open': 'Close'], 16)
+#pickle.dump(gasf, open('M30_2018-2019_16candle.gasf', 'wb'))
+
+
+train_gasf = pickle.load(open('M30_2015-2018_16candle.gasf', 'rb'))
 valid_gasf = pickle.load(open('M30_2018-2019_16candle.gasf', 'rb'))
 train_gasf = processing.nwhc2nchw_array(train_gasf)
 valid_gasf = processing.nwhc2nchw_array(valid_gasf)
@@ -135,7 +136,7 @@ agent = pfrl.agents.DoubleDQN(
         q_func.parameters(), lr=0.0001),  # オプティマイザ
     replay_buffer=pfrl.replay_buffers.ReplayBuffer(
         capacity=8 * 10 ** 4),  # リプレイバッファ 8GB
-    gamma=0.5,  # 将来の報酬割引率
+    gamma=0.9,  # 将来の報酬割引率
     explorer=pfrl.explorers.LinearDecayEpsilonGreedy(  # 探索(ε-greedy)
         start_epsilon=0.5, end_epsilon=0.0, decay_steps=(n_episodes-10)*len(train_df), random_action_func=train_env.action_space.sample),
     replay_start_size=10000,  # リプレイ開始サイズ
