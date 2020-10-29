@@ -190,7 +190,7 @@ class Broker():
             # Long or Shortの条件に合致するなら
             if (pos.is_long and close_long) or (pos.is_short and close_short):
                 # ポジションを確定して損益を計上
-                pl += pos.close() - SPREAD * pos.size
+                pl += pos.close() - SPREAD * abs(pos.size)
                 pips += pos.pips
                 self.position_size -= pos.size
                 # 取引履歴に追加
