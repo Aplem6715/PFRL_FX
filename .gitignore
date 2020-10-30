@@ -25,3 +25,4 @@ reference/*
 atari_acer.py
 *.pt
 *.gasf
+*.gasf2

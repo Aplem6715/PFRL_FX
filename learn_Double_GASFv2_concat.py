@@ -17,12 +17,14 @@ from pfrl.action_value import DiscreteActionValue
 import processing
 
 linear_features = ['position', 'pips']
+gasf_techs = ['SMA5', 'SMA25', 'MACD',
+              'MACD_SI', 'BBAND_U2', 'BBAND_L2', 'RSI14', 'MOM25']
 
 nb_kernel1 = 32
 #nb_kernel2 = 16
 k_size1 = 5
 #k_size2 = 2
-k_stride1 = 2
+k_stride1 = 1
 #k_stride2 = 1
 dense_units = [62, 32]
 
@@ -86,14 +88,15 @@ valid_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
                & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
 
 
-#gasf = processing.get_ohlc_culr_gasf(train_df.loc[:, 'Open': 'Close'], 16)
-#pickle.dump(gasf, open('M30_2015-2018_16candle.gasf', 'wb'))
-#gasf = processing.get_ohlc_culr_gasf(valid_df.loc[:, 'Open': 'Close'], 16)
-#pickle.dump(gasf, open('M30_2018-2019_16candle.gasf', 'wb'))
+gasf_cols = ['Open', 'High', 'Low', 'Close'] + gasf_techs
+#gasf = processing.get_culr_tech_gasf(train_df.loc[:, gasf_cols], 12)
+#pickle.dump(gasf, open('M30_2015-2018_12candle.gasf2', 'wb'))
+#gasf = processing.get_culr_tech_gasf(valid_df.loc[:, gasf_cols], 12)
+#pickle.dump(gasf, open('M30_2018-2019_12candle.gasf2', 'wb'))
 
 
-train_gasf = pickle.load(open('M30_2015-2018_16candle.gasf', 'rb'))
-valid_gasf = pickle.load(open('M30_2018-2019_16candle.gasf', 'rb'))
+train_gasf = pickle.load(open('M30_2015-2018_12candle.gasf2', 'rb'))
+valid_gasf = pickle.load(open('M30_2018-2019_12candle.gasf2', 'rb'))
 train_gasf = processing.nwhc2nchw_array(train_gasf)
 valid_gasf = processing.nwhc2nchw_array(valid_gasf)
 train_gasf = train_gasf.astype(np.float32)

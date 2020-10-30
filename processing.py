@@ -74,10 +74,10 @@ def ohlc2culr(ohlc):
 def create_ts_with_window(ts2d, window_size):
     '''
     Args:
-        ts2d (numpy): (N, 4)
+        ts2d (numpy): (N, nb_Feat)
         ohlc とか culr
     Returns:
-        ts_data (numpy): (N, window_size, 4)
+        ts_data (numpy): (N, window_size, nb_Feat)
     '''
     ts_data = np.zeros((ts2d.shape[0], window_size, ts2d.shape[1]))
     for i in range(window_size-1, ts2d.shape[0]):
@@ -109,7 +109,19 @@ def get_ohlc_culr_gasf(ohlc_df, nb_candles):
     return con
 
 
+def get_culr_tech_gasf(tech_df, nb_candles):
+    tech_ts = create_ts_with_window(tech_df.values, nb_candles)
+    culr_data = ohlc2culr(tech_ts[:, :, :4])
+    print('Creating CULR GASF')
+    culr_gasf = get_gasf(culr_data)
+    print('Creating Tech GASF')
+    tech_gasf = get_gasf(tech_ts[:, :, 4:])
+    con = np.concatenate([culr_gasf, tech_gasf], axis=3)
+    return con
+
 # nb, width, height, ch -> nb, ch, width, height
+
+
 def nwhc2nchw_array(arr: np.ndarray):
     return arr.transpose(0, 3, 2, 1)
 

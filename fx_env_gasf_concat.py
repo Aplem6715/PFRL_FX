@@ -224,6 +224,7 @@ class FxEnv_GASF(gym.Env):
 
     def reset(self):
         self.broker = Broker(MARGIN_RATIO, INIT_BALANCE, self.df, self.gasf)
+        self.action_hist = [0, 0, 0]
         for _ in range(TECH_SAFE_START_IDX):
             self.broker.update()
         return self.observe()
