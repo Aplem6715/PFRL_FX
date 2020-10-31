@@ -21,14 +21,14 @@ import processing
 linear_features = ['position', 'pips']
 gasf_techs = ['SMA5', 'SMA25', 'MACD', 'MACD_SI', 'RSI14']
 
-nb_kernel1 = 8
+nb_kernel1 = 32
 #nb_kernel2 = 16
-k_size1 = 5
+k_size1 = 3
 #k_size2 = 2
 k_stride1 = 1
 #k_stride2 = 1
-dense_units = [62, 32]
-LEARN_DURATION = 2500
+dense_units = [126, 64]
+LEARN_DURATION = 5000
 
 
 class Q_Func(torch.nn.Module):
@@ -85,21 +85,20 @@ class Q_Func(torch.nn.Module):
 
 df = pd.read_csv('./M30_201001-201912_Tech7.csv', parse_dates=[0])
 
-train_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
-               & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
-valid_df = df[((df['Datetime'] >= dt.datetime(2016, 1, 1))
+train_df = df[((df['Datetime'] >= dt.datetime(2012, 1, 1))
                & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
+valid_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
+               & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
+
+#gasf_cols = ['Open', 'High', 'Low', 'Close'] + gasf_techs
+#gasf = processing.get_ohlc_tech_gasf(train_df.loc[:, gasf_cols], 12)
+#pickle.dump(gasf, open('M30_2015-2018_12candle.gasf3', 'wb'))
+#gasf = processing.get_ohlc_tech_gasf(valid_df.loc[:, gasf_cols], 12)
+#pickle.dump(gasf, open('M30_2018-2019_12candle.gasf3', 'wb'))
 
 
-gasf_cols = ['Open', 'High', 'Low', 'Close'] + gasf_techs
-#gasf = processing.get_culr_tech_gasf(train_df.loc[:, gasf_cols], 12)
-#pickle.dump(gasf, open('M30_2016-2018_12candle.gasf2', 'wb'))
-#gasf = processing.get_culr_tech_gasf(valid_df.loc[:, gasf_cols], 12)
-#pickle.dump(gasf, open('M30_2018-2019_12candle.gasf2', 'wb'))
-
-
-train_gasf = pickle.load(open('M30_2018-2019_12candle.gasf2', 'rb'))
-valid_gasf = pickle.load(open('M30_2016-2018_12candle.gasf2', 'rb'))
+train_gasf = pickle.load(open('M30_2015-2018_12candle.gasf3', 'rb'))
+valid_gasf = pickle.load(open('M30_2018-2019_12candle.gasf3', 'rb'))
 train_gasf = processing.nwhc2nchw_array(train_gasf)
 valid_gasf = processing.nwhc2nchw_array(valid_gasf)
 train_gasf = train_gasf.astype(np.float32)
@@ -109,7 +108,7 @@ valid_gasf = valid_gasf.astype(np.float32)
 train_env = fx_env_gasf_range.FxEnv_GASF(
     train_df, train_gasf, fx_env_gasf_range.FxEnv_GASF.TRAIN_MODE, trade_duration=LEARN_DURATION)
 valid_env = fx_env_gasf_range.FxEnv_GASF(
-    valid_df, valid_gasf, fx_env_gasf_range.FxEnv_GASF.TEST_MODE, trade_duration=len(valid_df))
+    valid_df, valid_gasf, fx_env_gasf_range.FxEnv_GASF.TEST_MODE, trade_duration=None)
 
 # Q関数の定義
 obs_shape = train_env.observation_space.low.shape
@@ -149,7 +148,7 @@ agent = pfrl.agents.DoubleDQN(
     update_interval=10,  # 更新インターバル
     target_update_interval=1000,  # ターゲット更新インターバル
     gpu=0,  # GPUのデバイスID（-1:CPU）
-    max_grad_norm=0.1,
+    max_grad_norm=0.5  # added
 )
 
 # エージェントの学習
@@ -157,93 +156,97 @@ agent = pfrl.agents.DoubleDQN(
 
 def train():
     max_score = -1000000
-    # エピソードの反復
-    for i in range(1, n_episodes + 1):
-        # 環境のリセット
-        obs = train_env.reset()
-        rewards = []
-        acts = []
-        steps = 0
-        R = 0  # エピソード報酬
-        #bar = tqdm(total=len(train_df))
+    try:
+        # エピソードの反復
+        for i in range(1, n_episodes + 1):
+            # 環境のリセット
+            obs = train_env.reset()
+            rewards = []
+            acts = []
+            steps = 0
+            R = 0  # エピソード報酬
+            #bar = tqdm(total=len(train_df))
 
-        # ステップの反復
-        while True:
-            # bar.update(1)
-            steps += 1
-            # 環境の描画
-            train_env.render()
+            # ステップの反復
+            while True:
+                # bar.update(1)
+                steps += 1
+                # 環境の描画
+                train_env.render()
 
-            # 行動の推論
-            action = agent.act(obs)
-            acts.append(action)
+                # 行動の推論
+                action = agent.act(obs)
+                acts.append(action)
 
-            # 環境の1ステップ実行
-            obs, reward, done, _ = train_env.step(action)
-            rewards.append(reward)
-            R += reward
-            agent.observe(obs, reward, done, False)
+                # 環境の1ステップ実行
+                obs, reward, done, _ = train_env.step(action)
+                rewards.append(reward)
+                R += reward
+                agent.observe(obs, reward, done, False)
 
-            # エピソード完了
-            if done:
-                break
+                # エピソード完了
+                if done:
+                    break
 
-        # ログ出力
-        if i % 1 == 0 and i != 0:
-            print('episode:', i, '\tR:{:.1f}\tnb_trade:{}\tnb_stay:{}\tnb_buy:{}\tnb_sell:{}\tnb_close:{}\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}              '
-                  .format(
-                      R,
-                      len(train_env.broker.long_hists) +
-                      len(train_env.broker.short_hists),
-                      acts.count(0),
-                      acts.count(1),
-                      acts.count(2),
-                      acts.count(3),
-                      R / steps,
-                      min(rewards), max(rewards),
-                      train_env.broker.balance
-                  )
-                  )
-        if i % 1 == 0:
-            # エージェントのテスト
-            with agent.eval_mode():
-                # 環境のリセット
-                obs = valid_env.reset()
-                rewards = []
-                R = 0  # エピソード報酬
+            # ログ出力
+            if i % 1 == 0 and i != 0:
+                print('episode:', i, '\tR:{:.1f}\tnb_trade:{}\tnb_stay:{}\tnb_buy:{}\tnb_sell:{}\tnb_close:{}\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}              '
+                    .format(
+                        R,
+                        len(train_env.broker.long_hists) +
+                        len(train_env.broker.short_hists),
+                        acts.count(0),
+                        acts.count(1),
+                        acts.count(2),
+                        acts.count(3),
+                        R / steps,
+                        min(rewards), max(rewards),
+                        train_env.broker.balance
+                    )
+                    )
+            if i % 5 == 0:
+                # エージェントのテスト
+                with agent.eval_mode():
+                    # 環境のリセット
+                    obs = valid_env.reset()
+                    rewards = []
+                    R = 0  # エピソード報酬
 
-                # ステップの反復
-                while True:
-                    # 環境の描画
-                    valid_env.render()
+                    # ステップの反復
+                    while True:
+                        # 環境の描画
+                        valid_env.render()
 
-                    # 環境の1ステップ実行
-                    action = agent.act(obs)
-                    obs, r, done, _ = valid_env.step(action)
-                    rewards.append(r)
-                    steps += 1
-                    R += r
-                    agent.observe(obs, r, done, False)
+                        # 環境の1ステップ実行
+                        action = agent.act(obs)
+                        obs, r, done, _ = valid_env.step(action)
+                        rewards.append(r)
+                        steps += 1
+                        R += r
+                        agent.observe(obs, r, done, False)
 
-                    # エピソード完了
-                    if done:
-                        break
-                # 最大スコアなら保存
-                if R > max_score:
-                    max_score = R
-                    agent.save(
-                        'backup_double/agent_double_best_{}'.format(int(max_score)))
-                print('R:{:.1f}\tnb_trade:{}\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}                                           '
-                      .format(
-                          R,
-                          len(valid_env.broker.long_hists) +
-                          len(valid_env.broker.short_hists),
-                          R / steps,
-                          min(rewards), max(rewards),
-                          valid_env.broker.balance
-                      )
-                      )
-    print('Finished.')
+                        # エピソード完了
+                        if done:
+                            break
+                    # 最大スコアなら保存
+                    if R > max_score:
+                        print('max score:', R, ' saved!!')
+                        max_score = R
+                        agent.save(
+                            'backup_double/agent_double_best_{}'.format(int(max_score)))
+                    print('R:{:.1f}\tnb_trade:{}\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}                                           '
+                        .format(
+                            R,
+                            len(valid_env.broker.long_hists) +
+                            len(valid_env.broker.short_hists),
+                            R / steps,
+                            min(rewards), max(rewards),
+                            valid_env.broker.balance
+                        )
+                        )
+        print('Finished.')
+    except KeyboardInterrupt:
+        agent.save('agent_double_except{}'.format(i))
 
     agent.save('agent_double_last{}'.format(int(max_score)))
 

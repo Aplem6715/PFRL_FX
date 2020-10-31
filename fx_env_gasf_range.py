@@ -161,9 +161,9 @@ class Broker():
     # return: is_last
     def update(self):
         self.prev_pl_pips = self.unreal_pips
+        self.prev_price = self.now_price
 
         self.iter += 1
-        self.prev_price = self.now_price
         self.now_price = self.df.Close.iloc[self.iter]
         self.now_time = self.df.Datetime.iloc[self.iter]
         return self.iter >= self.end_idx-1 or self.balance <= 0
@@ -211,13 +211,12 @@ class FxEnv_GASF(gym.Env):
     TEST_MODE = 'test'
     TRAIN_MODE = 'train'
 
-    def __init__(self, df, gasf, mode: str, trade_duration: int):
+    def __init__(self, df, gasf, mode: str, trade_duration):
         self.df = df
         self.gasf = gasf
         self.mode = mode
         self.action_hist = [0, 0, 0]
-        self.broker = Broker(LEVERAGE, INIT_BALANCE,
-                             self.df, self.gasf, len(df))
+        self.broker = None
 
         self.action_space = gym.spaces.Discrete(3)
         self.observation_space = gym.spaces.Box(
@@ -229,9 +228,15 @@ class FxEnv_GASF(gym.Env):
 
     def reset(self):
         self.action_hist = [0, 0, 0]
-        self.start_idx = random.randint(
-            TECH_SAFE_START_IDX, len(self.df) - self.trade_duration)
-        self.end_idx = self.start_idx + self.trade_duration
+
+        if self.trade_duration:
+            self.start_idx = random.randint(
+                TECH_SAFE_START_IDX, len(self.df) - self.trade_duration)
+            self.end_idx = self.start_idx + self.trade_duration
+        else:
+            self.start_idx = TECH_SAFE_START_IDX
+            self.end_idx = len(self.df)
+
         self.broker = Broker(MARGIN_RATIO, INIT_BALANCE,
                              self.df, self.gasf, self.end_idx)
         for _ in range(self.start_idx):
@@ -263,12 +268,14 @@ class FxEnv_GASF(gym.Env):
 
     def render(self):
         if self.mode == self.TEST_MODE:
-            print('{:>3.1f}% ({}/{})  balance:{:>5.1f}  position:{:>3.1f}                      '.format(self.broker.iter /
-                                                                                                        self.broker.gasf.shape[0] * 100, self.broker.iter, self.broker.gasf.shape[0], self.broker.balance, self.broker.position_size), end='\r')
+            print('{:>3.1f}% ({}/{})  balance:{:>5.1f}  position:{:>3.1f}                      '.format(
+                (self.broker.iter-self.start_idx) /
+                (self.end_idx-self.start_idx) * 100, self.broker.iter-self.start_idx, self.end_idx-self.start_idx, self.broker.balance, self.broker.position_size), end='\r')
 
         elif self.mode == self.TRAIN_MODE:
-            print('{:>3.1f}% ({}/{})  balance:{:>5.1f}  position:{:>3.1f}                      '.format(self.broker.iter /
-                                                                                                        self.broker.gasf.shape[0] * 100, self.broker.iter, self.broker.gasf.shape[0], self.broker.balance, self.broker.position_size), end='\r')
+            print('{:>3.1f}% ({}/{})  balance:{:>5.1f}  position:{:>3.1f}                      '.format(
+                (self.broker.iter-self.start_idx) /
+                (self.end_idx-self.start_idx) * 100, self.broker.iter-self.start_idx, self.end_idx-self.start_idx, self.broker.balance, self.broker.position_size), end='\r')
 
     def observe(self):
         gasf = self.broker.get_gasf_data()
@@ -320,7 +327,7 @@ class FxEnv_GASF(gym.Env):
         # BUY-BUY or SELL-SELL or CLOSE-CLOSE or STAY
         else:
             ret = self.broker.unreal_pips - self.broker.prev_pl_pips
-            rewerd = np.sign(ret) * 0.05
+            rewerd = np.sign(ret) / REWERD_MAX_PIPS
         return rewerd
 
     def close(self):
