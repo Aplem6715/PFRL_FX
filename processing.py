@@ -51,6 +51,10 @@ def get_gasf(arr):
             each_channel = arr[i, :, c]
             c_max = np.amax(each_channel)
             c_min = np.amin(each_channel)
+            # Techで100分立の指標はそのままのレンジ
+            if abs(c_max - c_min) <= 1:
+                c_max = 1
+                c_min = 0
             each_gasf = ts2gasf(each_channel, max_v=c_max, min_v=c_min)
             gasf[i, :, :, c] = each_gasf
     return gasf

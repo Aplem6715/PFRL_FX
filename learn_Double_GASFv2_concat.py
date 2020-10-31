@@ -10,17 +10,18 @@ import datetime as dt
 import cProfile
 import pprint
 import pickle
+from tqdm import tqdm
 from sklearn import preprocessing
 
+import random
 from pfrl.action_value import DiscreteActionValue
 
 import processing
 
 linear_features = ['position', 'pips']
-gasf_techs = ['SMA5', 'SMA25', 'MACD',
-              'MACD_SI', 'BBAND_U2', 'BBAND_L2', 'RSI14', 'MOM25']
+gasf_techs = ['SMA5', 'SMA25', 'MACD', 'MACD_SI', 'RSI14']
 
-nb_kernel1 = 32
+nb_kernel1 = 4
 #nb_kernel2 = 16
 k_size1 = 5
 #k_size2 = 2
@@ -56,13 +57,15 @@ class Q_Func(torch.nn.Module):
         input_size = int((input_width - k_size1) / k_stride1) + 1
         input_size = input_size ** 2 * nb_kernel1
 
-        self.fc_layers = nn.ModuleList(
-            [
-                nn.Linear(input_size + len(linear_features), dense_units[0]),
-                nn.Linear(dense_units[0], dense_units[1]),
-                nn.Linear(dense_units[1], n_actions),
-            ]
-        )
+        fc_layer = [
+            nn.Linear(input_size + len(linear_features), dense_units[0])
+        ]
+        for i in range(1, len(dense_units)):
+            fc_layer.append(nn.Linear(dense_units[i - 1], dense_units[i]))
+        fc_layer.append(nn.Linear(dense_units[-1], n_actions))
+
+        self.fc_layers = nn.ModuleList(fc_layer)
+        torch.manual_seed(42)
 
     def forward(self, x):
         # split gasf, linear_features
@@ -80,23 +83,23 @@ class Q_Func(torch.nn.Module):
         return DiscreteActionValue(fc_in)
 
 
-df = pd.read_csv('M30_201001-201912_Tech7.csv', parse_dates=[0])
+df = pd.read_csv('./M30_201001-201912_Tech7.csv', parse_dates=[0])
 
-train_df = df[((df['Datetime'] >= dt.datetime(2015, 1, 1))
-               & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
-valid_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
+train_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
                & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
+valid_df = df[((df['Datetime'] >= dt.datetime(2016, 1, 1))
+               & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
 
 
 gasf_cols = ['Open', 'High', 'Low', 'Close'] + gasf_techs
 #gasf = processing.get_culr_tech_gasf(train_df.loc[:, gasf_cols], 12)
-#pickle.dump(gasf, open('M30_2015-2018_12candle.gasf2', 'wb'))
+#pickle.dump(gasf, open('M30_2016-2018_12candle.gasf2', 'wb'))
 #gasf = processing.get_culr_tech_gasf(valid_df.loc[:, gasf_cols], 12)
 #pickle.dump(gasf, open('M30_2018-2019_12candle.gasf2', 'wb'))
 
 
-train_gasf = pickle.load(open('M30_2015-2018_12candle.gasf2', 'rb'))
-valid_gasf = pickle.load(open('M30_2018-2019_12candle.gasf2', 'rb'))
+train_gasf = pickle.load(open('M30_2018-2019_12candle.gasf2', 'rb'))
+valid_gasf = pickle.load(open('M30_2016-2018_12candle.gasf2', 'rb'))
 train_gasf = processing.nwhc2nchw_array(train_gasf)
 valid_gasf = processing.nwhc2nchw_array(valid_gasf)
 train_gasf = train_gasf.astype(np.float32)
@@ -130,7 +133,7 @@ q_func = torch.nn.Sequential(
 '''
 q_func = Q_Func(n_actions, input_width=obs_width, n_input_channels=obs_ch)
 
-n_episodes = 50  # エピソード数
+n_episodes = 500  # エピソード数
 
 # エージェントの生成
 agent = pfrl.agents.DoubleDQN(
@@ -141,10 +144,10 @@ agent = pfrl.agents.DoubleDQN(
         capacity=8 * 10 ** 4),  # リプレイバッファ 8GB
     gamma=0.9,  # 将来の報酬割引率
     explorer=pfrl.explorers.LinearDecayEpsilonGreedy(  # 探索(ε-greedy)
-        start_epsilon=0.3, end_epsilon=0.0, decay_steps=(n_episodes*3/4)*len(train_df), random_action_func=train_env.action_space.sample),
+        start_epsilon=0.33, end_epsilon=0.001, decay_steps=(n_episodes*1/4)*len(train_df), random_action_func=lambda: random.choice([0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3])),
     replay_start_size=10000,  # リプレイ開始サイズ
-    update_interval=5,  # 更新インターバル
-    target_update_interval=100,  # ターゲット更新インターバル
+    update_interval=10,  # 更新インターバル
+    target_update_interval=1000,  # ターゲット更新インターバル
     gpu=0,  # GPUのデバイスID（-1:CPU）
 )
 
@@ -158,17 +161,21 @@ def train():
         # 環境のリセット
         obs = train_env.reset()
         rewards = []
+        acts = []
         steps = 0
         R = 0  # エピソード報酬
+        #bar = tqdm(total=len(train_df))
 
         # ステップの反復
         while True:
+            # bar.update(1)
             steps += 1
             # 環境の描画
             train_env.render()
 
             # 行動の推論
             action = agent.act(obs)
+            acts.append(action)
 
             # 環境の1ステップ実行
             obs, reward, done, _ = train_env.step(action)
@@ -182,11 +189,15 @@ def train():
 
         # ログ出力
         if i % 1 == 0 and i != 0:
-            print('episode:', i, '\tR:{:.1f}\tnb_trade:{}\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}                                           '
+            print('episode:', i, '\tR:{:.1f}\tnb_trade:{}\tnb_stay:{}\tnb_buy:{}\tnb_sell:{}\tnb_close:{}\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}              '
                   .format(
                       R,
                       len(train_env.broker.long_hists) +
                       len(train_env.broker.short_hists),
+                      acts.count(0),
+                      acts.count(1),
+                      acts.count(2),
+                      acts.count(3),
                       R / steps,
                       min(rewards), max(rewards),
                       train_env.broker.balance

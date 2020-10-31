@@ -8,10 +8,9 @@ from typing import List
 import fx_calc
 import processing
 
-STAY = 0
 BUY = 1
 SELL = 2
-CLOSE = 3
+CLOSE = 0
 
 TECH_SAFE_START_IDX = 20
 
@@ -172,7 +171,8 @@ class Broker():
 
     # ポジションを作成
     def open_position(self, size):
-        pos = Position(self.now_price, size, self)
+        spread = np.sign(size) * SPREAD
+        pos = Position(self.now_price + spread, size, self)
         self.positions.append(pos)
         self.position_size += size
 
@@ -190,7 +190,7 @@ class Broker():
             # Long or Shortの条件に合致するなら
             if (pos.is_long and close_long) or (pos.is_short and close_short):
                 # ポジションを確定して損益を計上
-                pl += pos.close() - SPREAD * abs(pos.size)
+                pl += pos.close()
                 pips += pos.pips
                 self.position_size -= pos.size
                 # 取引履歴に追加
@@ -215,7 +215,7 @@ class FxEnv_GASF(gym.Env):
         self.action_hist = [0, 0, 0]
         self.broker = Broker(LEVERAGE, INIT_BALANCE, self.df, self.gasf)
 
-        self.action_space = gym.spaces.Discrete(4)
+        self.action_space = gym.spaces.Discrete(3)
         self.observation_space = gym.spaces.Box(
             low=-1, high=1,
             # gasf+pos+pipsで3, ch, h, w
@@ -233,10 +233,9 @@ class FxEnv_GASF(gym.Env):
         pips = 0
 
         # need_loss_cut = self.broker.need_loss_cut()
-        if action == STAY:
-            pass
-        elif action == CLOSE:
-            pips = self.broker.close()
+        if action == CLOSE:
+            if len(self.broker.positions) > 0:
+                pips = self.broker.close()
         elif action == BUY and not self.broker.has_long:
             pips = self.broker.close()
             self.broker.buy()
@@ -255,7 +254,9 @@ class FxEnv_GASF(gym.Env):
 
     def render(self):
         if self.mode == self.TEST_MODE:
-            pass
+            print('{:>3.1f}% ({}/{})  balance:{:>5.1f}  position:{:>3.1f}                      '.format(self.broker.iter /
+                                                                                                        self.broker.gasf.shape[0] * 100, self.broker.iter, self.broker.gasf.shape[0], self.broker.balance, self.broker.position_size), end='\r')
+
         elif self.mode == self.TRAIN_MODE:
             print('{:>3.1f}% ({}/{})  balance:{:>5.1f}  position:{:>3.1f}                      '.format(self.broker.iter /
                                                                                                         self.broker.gasf.shape[0] * 100, self.broker.iter, self.broker.gasf.shape[0], self.broker.balance, self.broker.position_size), end='\r')
@@ -308,7 +309,7 @@ class FxEnv_GASF(gym.Env):
             rewerd = np.sign(realized_pips) * \
                 min(abs(realized_pips / REWERD_MAX_PIPS), 1)
         # BUY-BUY or SELL-SELL or CLOSE-CLOSE or STAY
-        elif self.action_hist[-1] == self.action_hist[-2] or act == STAY:
+        elif self.action_hist[-1] == self.action_hist[-2]:
             ret = self.broker.unreal_pips - self.broker.prev_pl_pips
             rewerd = np.sign(ret) * min(abs(ret / REWERD_MAX_PIPS), 1)
         return rewerd
