@@ -53,8 +53,8 @@ def get_gasf(arr):
             c_min = np.amin(each_channel)
             # Techで100分立の指標はそのままのレンジ
             if c_max <= 1:
-                c_max = 1
-                c_min = 0
+                c_max = 1.0
+                c_min = -1.0
             each_gasf = ts2gasf(each_channel, max_v=c_max, min_v=c_min)
             gasf[i, :, :, c] = each_gasf
     return gasf
@@ -73,6 +73,18 @@ def ohlc2culr(ohlc):
     culr[:, :, 2] = np.minimum(ohlc[:, :, 0], ohlc[:, :, -1]) - ohlc[:, :, 2]
     culr[:, :, 3] = ohlc[:, :, -1] - ohlc[:, :, 0]
     return culr
+
+
+def tech_preprocessing(tech_df: pd.DataFrame):
+    # 百分率変換 0~2
+    tech_df['RSI14'] /= 50
+    # 0中心 -1~1
+    tech_df['RSI14'] -= 1
+
+    # -1.16 ~ 0.9 → -1 ~ 1以内
+    tech_df['MACD'] /= 1.5
+    # -0.89 ~ 0.83そのまま
+    # tech_df['MACD_SI']
 
 
 def create_ts_with_window(ts2d, window_size):
@@ -113,6 +125,7 @@ def get_ohlc_culr_gasf(ohlc_df, nb_candles):
     return con
 
 
+'''
 def get_culr_tech_gasf(tech_df, nb_candles):
     tech_ts = create_ts_with_window(tech_df.values, nb_candles)
     culr_data = ohlc2culr(tech_ts[:, :, :4])
@@ -121,6 +134,18 @@ def get_culr_tech_gasf(tech_df, nb_candles):
     print('Creating Tech GASF')
     tech_gasf = get_gasf(tech_ts[:, :, 4:])
     con = np.concatenate([culr_gasf, tech_gasf], axis=3)
+    return con
+'''
+
+
+def get_ohlc_tech_gasf(tech_df, nb_candles):
+    tech_preprocessing(tech_df)
+    tech_ts = create_ts_with_window(tech_df.values, nb_candles)
+    print('Creating CULR GASF')
+    ohlc_gasf = get_gasf(tech_ts[:, :, :4])
+    print('Creating Tech GASF')
+    tech_gasf = get_gasf(tech_ts[:, :, 4:])
+    con = np.concatenate([ohlc_gasf, tech_gasf], axis=3)
     return con
 
 # nb, width, height, ch -> nb, ch, width, height
