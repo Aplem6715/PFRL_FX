@@ -24,6 +24,8 @@ INIT_BALANCE = 100000.0
 PRICE_TO_PIPS = 100
 PIPS_TO_PRICE = 0.01
 
+FUTURE_LENGTH = 10
+
 
 REWERD_MAX_PIPS = 100
 
@@ -88,6 +90,7 @@ class Broker():
         self.now_price = 0
         self.prev_price = 0
         self.prev_pl_pips = 0
+        self.future_price = 0
 
         # 残高
         self.balance = balance
@@ -106,8 +109,11 @@ class Broker():
 
         self.end_idx = end_idx
 
-        # self.volatility_arr = []
-        # self.setup_volatility_arr(self.df.Close.values.tolist(), 60)
+        self.setup_bbandVol()
+        self.vola_std = np.std(self.volatility_arr)
+        self.vola_mean = np.mean(self.volatility_arr)
+        #self.volatility_arr = []
+        #self.setup_volatility_arr(self.df.Close.values.tolist(), 60)
 
     def setup_volatility_arr(self, rate_arr, window_size):
         local_window_size = window_size
@@ -151,8 +157,22 @@ class Broker():
     def margin(self):
         return self.position_size * MARGIN_RATIO * self.now_price
 
+    @property
+    def is_risky(self):
+        return self.get_volatility() > self.vola_mean + self.vola_std*2
+
+    def setup_bbandVol(self):
+        # return self.volatility_arr[self.iter + delta]
+        bband_diff = self.df['BBAND_U2'] - self.df['BBAND_L2']
+        self.volatility_arr = bband_diff.clip(0.1, 10)
+
+    def get_volatility(self, delta):
+        return self.volatility_arr.iat[self.iter + delta]
+
+    '''
     def get_volatility(self, delta):
         return self.volatility_arr[self.iter + delta]
+    '''
 
     def get_gasf_data(self):
         return self.gasf[self.iter]
@@ -166,7 +186,9 @@ class Broker():
         self.iter += 1
         self.now_price = self.df.Close.iloc[self.iter]
         self.now_time = self.df.Datetime.iloc[self.iter]
-        return self.iter >= self.end_idx-1 or self.balance <= 0
+        self.future_price = self.df.Close.loc[self.iter:self.iter +
+                                              FUTURE_LENGTH].mean()
+        return self.iter+FUTURE_LENGTH >= self.end_idx-1 or self.balance <= 0
 
     # ロスカットが必要かどうか
     def need_loss_cut(self):
@@ -261,7 +283,7 @@ class FxEnv_GASF(gym.Env):
         # 時間を経過させる
         done = self.broker.update()
         # 報酬を計算
-        reward = self.calc_rewerd2(action, pips)
+        reward = self.calc_future_reward()
 
         return self.observe(), reward, done, {'pips': pips}
         # return self.observe(), pips, done, {}
@@ -301,34 +323,61 @@ class FxEnv_GASF(gym.Env):
         # アクション履歴(idx=-1は今回(t)のアクション, (t-1)のアクションはidx=-2)
         A1 = self.action_hist[-2]
         A2 = self.action_hist[-3]
-        '''
+
         # ボラティリティ
         sigma1 = self.broker.get_volatility(-1)
         sigma2 = self.broker.get_volatility(-2)
         # 定数でいい？計算式がわからん
         sigma_tgt = VOLATILITY_TGT
-        '''
+
         # 価格履歴
         p1 = self.broker.prev_price
         rt = self.broker.now_price - self.broker.prev_price
 
-        diff = A1*rt
-        cost = bp*abs(A1 - A2)
+        diff = A1*rt*5/sigma1
+        cost = bp*abs(5/sigma1 * A1 - 5/sigma2 * A2)
 
         return mu * (diff - cost)
 
     def calc_rewerd2(self, act, realized_pips):
-        rewerd = 0
-        #
+        reward = 0
+        # 取引確定時の利益を評価
         if realized_pips != 0:
             # BUY-SELL or SELL-BUY or CLOSE
-            rewerd = np.sign(realized_pips) * \
+            reward = np.sign(realized_pips) * \
                 min(abs(realized_pips / REWERD_MAX_PIPS), 1)
-        # BUY-BUY or SELL-SELL or CLOSE-CLOSE or STAY
+        # CLOSE-CLOSEの取引なし。高ボラティリティでの取引はリスクが高い → 取引しなかったら高評価
+        elif self.action_hist[-2] == CLOSE and self.action_hist[-1] == CLOSE:
+            if self.broker.is_risky:
+                reward = 1/REWERD_MAX_PIPS
+        # BUY-BUY or SELL-SELL or CLOSE-BUY or CLOSE-SELL
+        # 含み損益の増減を評価
         else:
             ret = self.broker.unreal_pips - self.broker.prev_pl_pips
-            rewerd = np.sign(ret) / REWERD_MAX_PIPS
-        return rewerd
+            reward = np.sign(ret) / REWERD_MAX_PIPS
+            # リスクのある取引を継続したら報酬1割引き
+            if self.broker.is_risky:
+                reward -= abs(reward) * 0.1
+        return reward
+
+    def calc_future_reward(self, act):
+        reward = 0
+        # 切った場合
+        if act == 0:
+            # ボラティリティが2σより高い場合（高リスク
+            if self.broker.is_risky:
+                # マイナス評価
+                reward = -abs(self.broker.future_price - self.broker.now_price)
+            else:
+                # 低リスクなら高評価
+                reward = abs(self.broker.future_price - self.broker.now_price)
+        # 注文を作成・継続した場合
+        else:
+            # 将来の価格との差分を報酬に
+            reward = self.broker.future_price - self.broker.now_price
+            if act == SELL:
+                reward *= - 1
+        return reward
 
     def close(self):
         if mode == self.TEST_MODE:
