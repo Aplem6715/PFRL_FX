@@ -15,6 +15,7 @@ from sklearn import preprocessing
 
 import random
 from pfrl.action_value import DiscreteActionValue
+import torch.nn.functional as F
 
 import processing
 
@@ -83,22 +84,54 @@ class Q_Func(torch.nn.Module):
         return DiscreteActionValue(fc_in)
 
 
+class DecayBoltzmann(pfrl.explorer.Explorer):
+    """Boltzmann exploration.
+
+    Args:
+        T (float): Temperature of Boltzmann distribution.
+    """
+
+    def __init__(self, decay_steps, T=1.0, min_T=0.0):
+        self.T = T
+        self.min_T = min_T
+        self.decay_steps = decay_steps
+
+    def select_action(self, t, greedy_action_func, action_value=None):
+        assert action_value is not None
+        assert isinstance(action_value, pfrl.action_value.DiscreteActionValue)
+        n_actions = action_value.q_values.shape[1]
+        if t < self.decay_steps:
+            T = self.T - t / self.decay_steps * (self.T - self.min_T)
+        else:
+            T = self.min_T
+        with torch.no_grad():
+            probs = (
+                F.softmax(action_value.q_values / T,
+                          dim=-1).cpu().numpy().ravel()
+            )
+        return np.random.choice(np.arange(n_actions), p=probs)
+
+    def __repr__(self):
+        return "Boltzmann(T={})".format(self.T)
+
+
 df = pd.read_csv('./M30_201001-201912_Tech7.csv', parse_dates=[0])
 
-train_df = df[((df['Datetime'] >= dt.datetime(2012, 1, 1))
-               & (df['Datetime'] < dt.datetime(2018, 1, 1)))]
-valid_df = df[((df['Datetime'] >= dt.datetime(2018, 1, 1))
+
+train_df = df[((df['Datetime'] >= dt.datetime(2015, 1, 1))
                & (df['Datetime'] < dt.datetime(2019, 1, 1)))]
+valid_df = df[((df['Datetime'] >= dt.datetime(2019, 1, 1))
+               & (df['Datetime'] < dt.datetime(2022, 1, 1)))]
 
 #gasf_cols = ['Open', 'High', 'Low', 'Close'] + gasf_techs
 #gasf = processing.get_ohlc_tech_gasf(train_df.loc[:, gasf_cols], 12)
-#pickle.dump(gasf, open('M30_2015-2018_12candle.gasf3', 'wb'))
+#pickle.dump(gasf, open('M30_2015-2019_12candle.gasf3', 'wb'))
 #gasf = processing.get_ohlc_tech_gasf(valid_df.loc[:, gasf_cols], 12)
-#pickle.dump(gasf, open('M30_2018-2019_12candle.gasf3', 'wb'))
+#pickle.dump(gasf, open('M30_2019-end_12candle.gasf3', 'wb'))
 
 
-train_gasf = pickle.load(open('M30_2015-2018_12candle.gasf3', 'rb'))
-valid_gasf = pickle.load(open('M30_2018-2019_12candle.gasf3', 'rb'))
+train_gasf = pickle.load(open('M30_2015-2019_12candle.gasf3', 'rb'))
+valid_gasf = pickle.load(open('M30_2019-end_12candle.gasf3', 'rb'))
 train_gasf = processing.nwhc2nchw_array(train_gasf)
 valid_gasf = processing.nwhc2nchw_array(valid_gasf)
 train_gasf = train_gasf.astype(np.float32)
@@ -142,13 +175,15 @@ agent = pfrl.agents.DoubleDQN(
     replay_buffer=pfrl.replay_buffers.ReplayBuffer(
         capacity=8 * 10 ** 4),  # リプレイバッファ 8GB
     gamma=0.9,  # 将来の報酬割引率
-    explorer=pfrl.explorers.LinearDecayEpsilonGreedy(  # 探索(ε-greedy)
-        start_epsilon=0.33, end_epsilon=0.001, decay_steps=(n_episodes*1/4)*len(train_df), random_action_func=lambda: random.choice([0, 0, 1, 1, 1, 2, 2, 2])),
+    # explorer=pfrl.explorers.LinearDecayEpsilonGreedy(  # 探索(ε-greedy)
+    #    start_epsilon=0.33, end_epsilon=0.001, decay_steps=(n_episodes*1/4)*len(train_df), random_action_func=lambda: random.choice([0, 0, 1, 1, 1, 2, 2, 2])),
+    explorer=DecayBoltzmann(
+        T=0.3, min_T=0.01, decay_steps=(n_episodes//2)*len(train_df)),
     replay_start_size=10000,  # リプレイ開始サイズ
     update_interval=10,  # 更新インターバル
     target_update_interval=1000,  # ターゲット更新インターバル
     gpu=0,  # GPUのデバイスID（-1:CPU）
-    max_grad_norm=0.5  # added
+    max_grad_norm=10.0
 )
 
 # エージェントの学習
@@ -169,7 +204,7 @@ def train():
 
             # ステップの反復
             while True:
-                # bar.update(1)
+                # bar.update(1)p
                 steps += 1
                 # 環境の描画
                 train_env.render()
@@ -191,19 +226,19 @@ def train():
             # ログ出力
             if i % 1 == 0 and i != 0:
                 print('episode:', i, '\tR:{:.1f}\tnb_trade:{}\tnb_stay:{}\tnb_buy:{}\tnb_sell:{}\tnb_close:{}\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}              '
-                    .format(
-                        R,
-                        len(train_env.broker.long_hists) +
-                        len(train_env.broker.short_hists),
-                        acts.count(0),
-                        acts.count(1),
-                        acts.count(2),
-                        acts.count(3),
-                        R / steps,
-                        min(rewards), max(rewards),
-                        train_env.broker.balance
-                    )
-                    )
+                      .format(
+                          R,
+                          len(train_env.broker.long_hists) +
+                          len(train_env.broker.short_hists),
+                          acts.count(0),
+                          acts.count(1),
+                          acts.count(2),
+                          acts.count(3),
+                          R / steps,
+                          min(rewards), max(rewards),
+                          train_env.broker.balance
+                      )
+                      )
             if i % 5 == 0:
                 # エージェントのテスト
                 with agent.eval_mode():
@@ -235,15 +270,15 @@ def train():
                         agent.save(
                             'backup_double/agent_double_best_{}'.format(int(max_score)))
                     print('R:{:.1f}\tnb_trade:{}\tmeanR:{:.3f}\tminR:{:.3f}\tmaxR:{:.3f}\tbalance:{:.1f}                                           '
-                        .format(
-                            R,
-                            len(valid_env.broker.long_hists) +
-                            len(valid_env.broker.short_hists),
-                            R / steps,
-                            min(rewards), max(rewards),
-                            valid_env.broker.balance
-                        )
-                        )
+                          .format(
+                              R,
+                              len(valid_env.broker.long_hists) +
+                              len(valid_env.broker.short_hists),
+                              R / steps,
+                              min(rewards), max(rewards),
+                              valid_env.broker.balance
+                          )
+                          )
         print('Finished.')
     except KeyboardInterrupt:
         agent.save('agent_double_except{}'.format(i))
