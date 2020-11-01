@@ -24,10 +24,11 @@ INIT_BALANCE = 100000.0
 PRICE_TO_PIPS = 100
 PIPS_TO_PRICE = 0.01
 
-FUTURE_LENGTH = 10
+FUTURE_LENGTH = 4
 
 
 REWERD_MAX_PIPS = 100
+REWARD_MAX_DIFF_PIPS = 10
 
 RISK_THRESH = 0.02
 LOSS_CUT_PIPS = 20
@@ -159,7 +160,7 @@ class Broker():
 
     @property
     def is_risky(self):
-        return self.get_volatility() > self.vola_mean + self.vola_std*2
+        return self.get_volatility(0) > self.vola_mean + self.vola_std*2
 
     def setup_bbandVol(self):
         # return self.volatility_arr[self.iter + delta]
@@ -186,8 +187,8 @@ class Broker():
         self.iter += 1
         self.now_price = self.df.Close.iloc[self.iter]
         self.now_time = self.df.Datetime.iloc[self.iter]
-        self.future_price = self.df.Close.loc[self.iter:self.iter +
-                                              FUTURE_LENGTH].mean()
+        self.future_price = np.mean(self.df.Close.values[self.iter:self.iter +
+                                                         FUTURE_LENGTH])
         return self.iter+FUTURE_LENGTH >= self.end_idx-1 or self.balance <= 0
 
     # ロスカットが必要かどうか
@@ -283,7 +284,7 @@ class FxEnv_GASF(gym.Env):
         # 時間を経過させる
         done = self.broker.update()
         # 報酬を計算
-        reward = self.calc_future_reward()
+        reward = self.calc_future_reward(action, pips)
 
         return self.observe(), reward, done, {'pips': pips}
         # return self.observe(), pips, done, {}
@@ -360,21 +361,23 @@ class FxEnv_GASF(gym.Env):
                 reward -= abs(reward) * 0.1
         return reward
 
-    def calc_future_reward(self, act):
+    def calc_future_reward(self, act, pips):
         reward = 0
-        # 切った場合
-        if act == 0:
+        # 損益が確定した場合
+        if pips != 0:
+            reward = np.sign(pips) * min(abs(pips / REWERD_MAX_PIPS), 1)
+            # 切った場合
+        elif act == 0:
             # ボラティリティが2σより高い場合（高リスク
             if self.broker.is_risky:
-                # マイナス評価
-                reward = -abs(self.broker.future_price - self.broker.now_price)
-            else:
-                # 低リスクなら高評価
-                reward = abs(self.broker.future_price - self.broker.now_price)
+                # 高評価
+                reward = min(abs(self.broker.future_price -
+                                 self.broker.now_price) / REWERD_MAX_PIPS, 1)
         # 注文を作成・継続した場合
         else:
             # 将来の価格との差分を報酬に
-            reward = self.broker.future_price - self.broker.now_price
+            ret = (self.broker.future_price - self.broker.now_price)
+            reward = np.sign(ret) * min(abs(ret / REWARD_MAX_DIFF_PIPS), 1)
             if act == SELL:
                 reward *= - 1
         return reward
